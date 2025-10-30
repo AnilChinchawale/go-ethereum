@@ -3,10 +3,10 @@ package hooks
 import (
 	"errors"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/XinFinOrg/XDPoSChain/common"
-	"github.com/XinFinOrg/XDPoSChain/common/sort"
 	"github.com/XinFinOrg/XDPoSChain/consensus"
 	"github.com/XinFinOrg/XDPoSChain/consensus/XDPoS"
 	"github.com/XinFinOrg/XDPoSChain/consensus/XDPoS/utils"
@@ -428,8 +428,8 @@ func GetSigningTxCount(c *XDPoS.XDPoS, chain consensus.ChainReader, header *type
 							ms = append(ms, utils.Masternode{Address: candidate, Stake: v})
 						}
 					}
-					sort.Slice(ms, func(i, j int) bool {
-						return ms[i].Stake.Cmp(ms[j].Stake) >= 0
+					slices.SortStableFunc(ms, func(a, b utils.Masternode) int {
+						return b.Stake.Cmp(a.Stake)
 					})
 					// find penalty and filter them out
 					penalties := common.ExtractAddressFromBytes(h.Penalties)
