@@ -1192,7 +1192,11 @@ func (bc *BlockChain) insertStopped() bool {
 }
 
 func (bc *BlockChain) procFutureBlocks() {
-	blocks := make([]*types.Block, 0, bc.futureBlocks.Len())
+	capacity := bc.futureBlocks.Len()
+	if capacity == 0 {
+		return
+	}
+	blocks := make([]*types.Block, 0, capacity)
 	for _, hash := range bc.futureBlocks.Keys() {
 		if block, exist := bc.futureBlocks.Peek(hash); exist {
 			blocks = append(blocks, block)
@@ -2572,8 +2576,9 @@ func (bc *BlockChain) PostChainEvents(events []interface{}, logs []*types.Log) {
 func (bc *BlockChain) futureBlocksLoop() {
 	defer bc.wg.Done()
 
-	futureTimer := time.NewTicker(10 * time.Millisecond)
+	futureTimer := time.NewTicker(100 * time.Millisecond)
 	defer futureTimer.Stop()
+
 	for {
 		select {
 		case <-futureTimer.C:
