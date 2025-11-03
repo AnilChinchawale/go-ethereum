@@ -381,11 +381,6 @@ func signingTxWithSignerFn(header *types.Header, nonce uint64, signer common.Add
 	return signedTx, nil
 }
 
-func UpdateSigner(bc *core.BlockChain) error {
-	err := bc.UpdateM1()
-	return err
-}
-
 func GetSnapshotSigner(bc *core.BlockChain, header *types.Header) (signersList, error) {
 	engine := bc.Engine().(*XDPoS.XDPoS)
 	snap, err := engine.GetSnapshot(bc, header)
@@ -511,12 +506,13 @@ func PrepareXDCTestBlockChainForV2Engine(t *testing.T, numOfBlocks int, chainCon
 		}
 
 		currentBlock = block
-	}
 
-	// Update Signer as there is no previous signer assigned
-	err = UpdateSigner(blockchain)
-	if err != nil {
-		t.Fatal(err)
+		if uint64(i)%chainConfig.XDPoS.Epoch == chainConfig.XDPoS.Epoch-chainConfig.XDPoS.Gap {
+			err := blockchain.UpdateM1()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 
 	return blockchain, backend, currentBlock, signer, signFn, currentForkBlock
@@ -566,12 +562,13 @@ func PrepareXDCTestBlockChainWithPenaltyForV2Engine(t *testing.T, numOfBlocks in
 			t.Fatal(err)
 		}
 		currentBlock = block
-	}
 
-	// Update Signer as there is no previous signer assigned
-	err = UpdateSigner(blockchain)
-	if err != nil {
-		t.Fatal(err)
+		if uint64(i)%chainConfig.XDPoS.Epoch == chainConfig.XDPoS.Epoch-chainConfig.XDPoS.Gap {
+			err := blockchain.UpdateM1()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 
 	return blockchain, backend, currentBlock, signer, signFn
@@ -628,12 +625,13 @@ func PrepareXDCTestBlockChainWithPenaltyCustomized(t *testing.T, numOfBlocks int
 			t.Fatal(err)
 		}
 		currentBlock = block
-	}
 
-	// Update Signer as there is no previous signer assigned
-	err = UpdateSigner(blockchain)
-	if err != nil {
-		t.Fatal(err)
+		if uint64(i)%chainConfig.XDPoS.Epoch == chainConfig.XDPoS.Epoch-chainConfig.XDPoS.Gap {
+			err := blockchain.UpdateM1()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 
 	return blockchain, backend, currentBlock, signer, signFn
@@ -691,12 +689,13 @@ func PrepareXDCTestBlockChainWith128Candidates(t *testing.T, numOfBlocks int, ch
 		}
 
 		currentBlock = block
-	}
 
-	// Update Signer as there is no previous signer assigned
-	err = UpdateSigner(blockchain)
-	if err != nil {
-		t.Fatal(err)
+		if uint64(i)%chainConfig.XDPoS.Epoch == chainConfig.XDPoS.Epoch-chainConfig.XDPoS.Gap {
+			err := blockchain.UpdateM1()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 
 	return blockchain, backend, currentBlock, signer, signFn
@@ -760,12 +759,13 @@ func PrepareXDCTestBlockChainWithProtectorObserver(t *testing.T, numOfBlocks int
 		}
 
 		currentBlock = block
-	}
 
-	// Update Signer as there is no previous signer assigned
-	err = UpdateSigner(blockchain)
-	if err != nil {
-		t.Fatal(err)
+		if uint64(i)%chainConfig.XDPoS.Epoch == chainConfig.XDPoS.Epoch-chainConfig.XDPoS.Gap {
+			err := blockchain.UpdateM1()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 
 	return blockchain, backend, currentBlock, signer, signFn
