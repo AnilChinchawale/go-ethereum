@@ -970,7 +970,6 @@ func (w *Work) commitTransactions(mux *event.TypeMux, balanceFee map[common.Addr
 			copyState, _ := bc.State()
 			if err := core.ValidateXDCZApplyTransaction(bc, nil, copyState, common.BytesToAddress(data[4:])); err != nil {
 				log.Debug("XDCZApply: invalid token", "token", common.BytesToAddress(data[4:]).Hex())
-				txs.Pop()
 				continue
 			}
 		}
@@ -979,7 +978,6 @@ func (w *Work) commitTransactions(mux *event.TypeMux, balanceFee map[common.Addr
 			copyState, _ := bc.State()
 			if err := core.ValidateXDCXApplyTransaction(bc, nil, copyState, common.BytesToAddress(data[4:])); err != nil {
 				log.Debug("XDCXApply: invalid token", "token", common.BytesToAddress(data[4:]).Hex())
-				txs.Pop()
 				continue
 			}
 		}
