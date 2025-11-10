@@ -10,6 +10,7 @@ type PoolObj interface {
 	Hash() common.Hash
 	PoolKey() string
 	GetSigner() common.Address
+	DeepCopy() interface{}
 }
 type Pool struct {
 	objList map[string]map[common.Hash]PoolObj
@@ -22,7 +23,17 @@ func NewPool() *Pool {
 	}
 }
 func (p *Pool) Get() map[string]map[common.Hash]PoolObj {
-	return p.objList
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	dataCopy := make(map[string]map[common.Hash]PoolObj, len(p.objList))
+	for k1, v1 := range p.objList {
+		dataCopy[k1] = make(map[common.Hash]PoolObj, len(v1))
+		for k2, v2 := range v1 {
+			dataCopy[k1][k2] = v2.DeepCopy().(PoolObj)
+		}
+	}
+
+	return dataCopy
 }
 
 func (p *Pool) Add(obj PoolObj) (int, map[common.Hash]PoolObj) {
@@ -36,10 +47,18 @@ func (p *Pool) Add(obj PoolObj) (int, map[common.Hash]PoolObj) {
 	}
 	objListKeyed[obj.Hash()] = obj
 	numOfItems := len(objListKeyed)
-	return numOfItems, objListKeyed
+
+	dataCopy := make(map[common.Hash]PoolObj, len(objListKeyed))
+	for k, v := range objListKeyed {
+		dataCopy[k] = v.DeepCopy().(PoolObj)
+	}
+
+	return numOfItems, dataCopy
 }
 
 func (p *Pool) Size(obj PoolObj) int {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
 	poolKey := obj.PoolKey()
 	objListKeyed, ok := p.objList[poolKey]
 	if !ok {
@@ -84,8 +103,8 @@ func (p *Pool) Clear() {
 }
 
 func (p *Pool) GetObjsByKey(poolKey string) []PoolObj {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+	p.lock.RLock()
+	defer p.lock.RUnlock()
 
 	objListKeyed, ok := p.objList[poolKey]
 	if !ok {
@@ -94,8 +113,8 @@ func (p *Pool) GetObjsByKey(poolKey string) []PoolObj {
 	objList := make([]PoolObj, len(objListKeyed))
 	cnt := 0
 	for _, obj := range objListKeyed {
-		objList[cnt] = obj
-		cnt += 1
+		objList[cnt] = obj.DeepCopy().(PoolObj)
+		cnt++
 	}
 	return objList
 }
