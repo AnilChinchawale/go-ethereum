@@ -66,12 +66,8 @@ func CompareSignersLists(list1 []common.Address, list2 []common.Address) bool {
 	l1 := slices.Clone(list1)
 	l2 := slices.Clone(list2)
 
-	slices.SortFunc(l1, func(a, b common.Address) int {
-		return bytes.Compare(a[:], b[:])
-	})
-	slices.SortFunc(l2, func(a, b common.Address) int {
-		return bytes.Compare(a[:], b[:])
-	})
+	slices.SortFunc(l1, common.Address.Cmp)
+	slices.SortFunc(l2, common.Address.Cmp)
 
 	return slices.Equal(l1, l2)
 }
