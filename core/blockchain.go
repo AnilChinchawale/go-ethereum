@@ -2830,7 +2830,7 @@ func (bc *BlockChain) logExchangeData(block *types.Block) {
 	}
 	txMatchBatchData, err := ExtractTradingTransactions(block.Transactions())
 	if err != nil {
-		log.Crit("failed to extract matching transaction", "err", err)
+		log.Error("failed to extract matching transaction", "err", err)
 		return
 	}
 	if len(txMatchBatchData) == 0 {
@@ -2858,7 +2858,7 @@ func (bc *BlockChain) logExchangeData(block *types.Block) {
 			)
 
 			if takerOrderInTx, err = txMatch.DecodeOrder(); err != nil {
-				log.Crit("SDK node decode takerOrderInTx failed", "txDataMatch", txMatch)
+				log.Error("SDK node decode takerOrderInTx failed", "txDataMatch", txMatch)
 				return
 			}
 			cacheKey := crypto.Keccak256Hash(txMatchBatch.TxHash.Bytes(), tradingstate.GetMatchingResultCacheKey(takerOrderInTx).Bytes())
@@ -2876,7 +2876,7 @@ func (bc *BlockChain) logExchangeData(block *types.Block) {
 
 			txMatchTime := time.Unix(int64(block.Header().Time), 0).UTC()
 			if err := XDCXService.SyncDataToSDKNode(takerOrderInTx, txMatchBatch.TxHash, txMatchTime, currentState, trades, rejectedOrders, &dirtyOrderCount); err != nil {
-				log.Crit("failed to SyncDataToSDKNode ", "blockNumber", block.Number(), "err", err)
+				log.Error("failed to SyncDataToSDKNode ", "blockNumber", block.Number(), "err", err)
 				return
 			}
 		}
@@ -2898,7 +2898,8 @@ func (bc *BlockChain) logLendingData(block *types.Block) {
 	}
 	batches, err := ExtractLendingTransactions(block.Transactions())
 	if err != nil {
-		log.Crit("failed to extract lending transaction", "err", err)
+		log.Error("failed to extract lending transaction", "err", err)
+		return
 	}
 	start := time.Now()
 	defer func() {
@@ -2931,7 +2932,8 @@ func (bc *BlockChain) logLendingData(block *types.Block) {
 			statedb, _ := bc.State()
 
 			if err := lendingService.SyncDataToSDKNode(bc, statedb.Copy(), block, item, batch.TxHash, txMatchTime, trades, rejectedOrders, &dirtyOrderCount); err != nil {
-				log.Crit("lending: failed to SyncDataToSDKNode ", "blockNumber", block.Number(), "err", err)
+				log.Error("lending: failed to SyncDataToSDKNode ", "blockNumber", block.Number(), "err", err)
+				return
 			}
 		}
 	}
@@ -2940,7 +2942,8 @@ func (bc *BlockChain) logLendingData(block *types.Block) {
 	if block.Number().Uint64()%bc.chainConfig.XDPoS.Epoch == common.LiquidateLendingTradeBlock {
 		finalizedTx, err := ExtractLendingFinalizedTradeTransactions(block.Transactions())
 		if err != nil {
-			log.Crit("failed to extract finalizedTrades transaction", "err", err)
+			log.Error("failed to extract finalizedTrades transaction", "err", err)
+			return
 		}
 		finalizedTrades := map[common.Hash]*lendingstate.LendingTrade{}
 		finalizedData, ok := bc.finalizedTrade.Get(finalizedTx.TxHash)
@@ -2949,7 +2952,8 @@ func (bc *BlockChain) logLendingData(block *types.Block) {
 		}
 		if len(finalizedTrades) > 0 {
 			if err := lendingService.UpdateLiquidatedTrade(block.Time(), finalizedTx, finalizedTrades); err != nil {
-				log.Crit("lending: failed to UpdateLiquidatedTrade ", "blockNumber", block.Number(), "err", err)
+				log.Error("lending: failed to UpdateLiquidatedTrade ", "blockNumber", block.Number(), "err", err)
+				return
 			}
 		}
 	}
