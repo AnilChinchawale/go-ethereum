@@ -140,7 +140,7 @@ func (s *stateObject) markSelfdestructed() {
 
 func (s *stateObject) touch() {
 	s.db.journal.append(touchChange{
-		account: &s.address,
+		account: s.address,
 	})
 	if s.address == ripemd {
 		// Explicitly put it in the dirty-cache, which is otherwise generated from
@@ -226,7 +226,7 @@ func (s *stateObject) SetState(db Database, key, value common.Hash) {
 	}
 	// New value is different, update and journal the change
 	s.db.journal.append(storageChange{
-		account:  &s.address,
+		account:  s.address,
 		key:      key,
 		prevalue: prev,
 	})
@@ -363,7 +363,7 @@ func (s *stateObject) SubBalance(amount *big.Int, reason tracing.BalanceChangeRe
 
 func (s *stateObject) SetBalance(amount *big.Int, reason tracing.BalanceChangeReason) {
 	s.db.journal.append(balanceChange{
-		account: &s.address,
+		account: s.address,
 		prev:    new(big.Int).Set(s.data.Balance),
 	})
 	if s.db.logger != nil && s.db.logger.OnBalanceChange != nil {
@@ -434,14 +434,13 @@ func (s *stateObject) CodeSize(db Database) int {
 }
 
 func (s *stateObject) SetCode(codeHash common.Hash, code []byte) {
-	prevcode := s.Code(s.db.db)
+	prevCode := s.Code(s.db.db)
 	s.db.journal.append(codeChange{
-		account:  &s.address,
-		prevhash: s.CodeHash(),
-		prevcode: prevcode,
+		account:  s.address,
+		prevCode: prevCode,
 	})
 	if s.db.logger != nil && s.db.logger.OnCodeChange != nil {
-		s.db.logger.OnCodeChange(s.address, common.BytesToHash(s.CodeHash()), prevcode, codeHash, code)
+		s.db.logger.OnCodeChange(s.address, common.BytesToHash(s.CodeHash()), prevCode, codeHash, code)
 	}
 	s.setCode(codeHash, code)
 }
@@ -454,7 +453,7 @@ func (s *stateObject) setCode(codeHash common.Hash, code []byte) {
 
 func (s *stateObject) SetNonce(nonce uint64) {
 	s.db.journal.append(nonceChange{
-		account: &s.address,
+		account: s.address,
 		prev:    s.data.Nonce,
 	})
 	if s.db.logger != nil && s.db.logger.OnNonceChange != nil {
