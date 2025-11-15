@@ -845,36 +845,11 @@ var (
 	}
 
 	// XDCX settings
-	XDCXEnabledFlag = &cli.BoolFlag{
-		Name:     "XDCx",
-		Usage:    "Enable the XDCX protocol",
-		Category: flags.XdcxCategory,
-	}
-	XDCXDBEngineFlag = &cli.StringFlag{
-		Name:     "XDCx-dbengine",
-		Aliases:  []string{"XDCx.dbengine"},
-		Usage:    "Database engine for XDCX (leveldb, mongodb)",
-		Value:    "leveldb",
-		Category: flags.XdcxCategory,
-	}
 	XDCXDBNameFlag = &cli.StringFlag{
 		Name:     "XDCx-dbName",
 		Aliases:  []string{"XDCx.dbName"},
 		Usage:    "Database name for XDCX",
 		Value:    "XDCdex",
-		Category: flags.XdcxCategory,
-	}
-	XDCXDBConnectionUrlFlag = &cli.StringFlag{
-		Name:     "XDCx-dbConnectionUrl",
-		Aliases:  []string{"XDCx.dbConnectionUrl"},
-		Usage:    "ConnectionUrl to database if dbEngine is mongodb. Host:port. If there are multiple instances, separated by comma. Eg: localhost:27017,localhost:27018",
-		Value:    "localhost:27017",
-		Category: flags.XdcxCategory,
-	}
-	XDCXDBReplicaSetNameFlag = &cli.StringFlag{
-		Name:     "XDCx-dbReplicaSetName",
-		Aliases:  []string{"XDCx.dbReplicaSetName"},
-		Usage:    "ReplicaSetName if Master-Slave is setup",
 		Category: flags.XdcxCategory,
 	}
 )
@@ -1475,23 +1450,10 @@ func SetXDCXConfig(ctx *cli.Context, cfg *XDCx.Config, XDCDataDir string) {
 	// XDCx datadir: XDCDataDir/XDCx
 	cfg.DataDir = filepath.Join(XDCDataDir, "XDCx")
 	log.Info("XDCX datadir", "path", cfg.DataDir)
-	if ctx.IsSet(XDCXDBEngineFlag.Name) {
-		cfg.DBEngine = ctx.String(XDCXDBEngineFlag.Name)
-	} else {
-		cfg.DBEngine = XDCXDBEngineFlag.Value
-	}
 	if ctx.IsSet(XDCXDBNameFlag.Name) {
 		cfg.DBName = ctx.String(XDCXDBNameFlag.Name)
 	} else {
 		cfg.DBName = XDCXDBNameFlag.Value
-	}
-	if ctx.IsSet(XDCXDBConnectionUrlFlag.Name) {
-		cfg.ConnectionUrl = ctx.String(XDCXDBConnectionUrlFlag.Name)
-	} else {
-		cfg.ConnectionUrl = XDCXDBConnectionUrlFlag.Value
-	}
-	if ctx.IsSet(XDCXDBReplicaSetNameFlag.Name) {
-		cfg.ReplicaSetName = ctx.String(XDCXDBReplicaSetNameFlag.Name)
 	}
 }
 
