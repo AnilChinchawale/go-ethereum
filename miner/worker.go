@@ -919,8 +919,7 @@ func (w *Work) commitTransactions(mux *event.TypeMux, balanceFee map[common.Addr
 	// first priority for special Txs
 	for _, tx := range specialTxs {
 		to := tx.To()
-		//HF number for black-list
-		if (w.header.Number.Uint64() >= common.BlackListHFNumber) && !common.IsTestnet {
+		if w.header.Number.Uint64() >= common.BlackListHFNumber {
 			from := tx.From()
 			// check if sender is in black list
 			if common.IsInBlacklist(from) {
@@ -1029,9 +1028,8 @@ func (w *Work) commitTransactions(mux *event.TypeMux, balanceFee map[common.Addr
 			break
 		}
 
-		//HF number for black-list
 		to := tx.To()
-		if (w.header.Number.Uint64() >= common.BlackListHFNumber) && !common.IsTestnet {
+		if w.header.Number.Uint64() >= common.BlackListHFNumber {
 			from := tx.From()
 			// check if sender is in black list
 			if common.IsInBlacklist(from) {
