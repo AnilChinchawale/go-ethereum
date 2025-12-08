@@ -83,6 +83,7 @@ var (
 	xdposV2Prefix = []byte("XDPoS-V2-")
 
 	sectionHeadKeyPrefix = []byte("shead")
+	validSectionsKey     = []byte("count")
 
 	preimageCounter    = metrics.NewRegisteredCounter("db/preimage/total", nil)
 	preimageHitCounter = metrics.NewRegisteredCounter("db/preimage/hits", nil)
