@@ -578,9 +578,9 @@ web3._extend({
 			params: 1,
 		}),
 		new web3._extend.Method({
-			name: 'getCurrentTotalMinted',
-			call: 'eth_getCurrentTotalMinted',
-			params: 0,
+			name: 'getTokenStats',
+			call: 'eth_getTokenStats',
+			params: 1,
 		}),
 	],
 	properties: [

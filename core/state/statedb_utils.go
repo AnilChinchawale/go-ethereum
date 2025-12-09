@@ -152,34 +152,62 @@ func (s *StateDB) GetVoterCap(candidate, voter common.Address) *big.Int {
 	return ret.Big()
 }
 
-var (
-	slotMintedRecordTotalMinted  uint64 = 0
-	slotMintedRecordLastEpochNum uint64 = 1
-)
-
-func (s *StateDB) GetTotalMinted() common.Hash {
-	hash := GetLocSimpleVariable(slotMintedRecordTotalMinted)
-	totalMinted := s.GetState(common.MintedRecordAddressBinary, hash)
-	return totalMinted
-}
-
-func (s *StateDB) PutTotalMinted(value common.Hash) {
-	hash := GetLocSimpleVariable(slotMintedRecordTotalMinted)
-	s.SetState(common.MintedRecordAddressBinary, hash, value)
-}
-
-func (s *StateDB) GetLastEpochNum() common.Hash {
-	hash := GetLocSimpleVariable(slotMintedRecordLastEpochNum)
-	totalMinted := s.GetState(common.MintedRecordAddressBinary, hash)
-	return totalMinted
-}
-
-func (s *StateDB) PutLastEpochNum(value common.Hash) {
-	hash := GetLocSimpleVariable(slotMintedRecordLastEpochNum)
-	s.SetState(common.MintedRecordAddressBinary, hash, value)
-}
-
 func (s *StateDB) IncrementMintedRecordNonce() {
 	nonce := s.GetNonce(common.MintedRecordAddressBinary)
 	s.SetNonce(common.MintedRecordAddressBinary, nonce+1)
+}
+
+var (
+	// Storage slot locations (32-byte keys) within MintedRecord SMC
+	slotMintedRecordOnsetEpoch             = common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000001")
+	slotMintedRecordOnsetBlock             = common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000002")
+	slotMintedRecordPostMintedBase, _      = new(big.Int).SetString("0x0100000000000000000000000000000000000000000000000000000000000000", 0)
+	slotMintedRecordPostBurnedBase, _      = new(big.Int).SetString("0x0200000000000000000000000000000000000000000000000000000000000000", 0)
+	slotMintedRecordPostRewardBlockBase, _ = new(big.Int).SetString("0x0300000000000000000000000000000000000000000000000000000000000000", 0)
+)
+
+func (s *StateDB) GetMintedRecordOnsetEpoch() common.Hash {
+	return s.GetState(common.MintedRecordAddressBinary, slotMintedRecordOnsetEpoch)
+}
+
+func (s *StateDB) PutMintedRecordOnsetEpoch(value common.Hash) {
+	s.SetState(common.MintedRecordAddressBinary, slotMintedRecordOnsetEpoch, value)
+}
+
+func (s *StateDB) GetMintedRecordOnsetBlock() common.Hash {
+	return s.GetState(common.MintedRecordAddressBinary, slotMintedRecordOnsetBlock)
+}
+
+func (s *StateDB) PutMintedRecordOnsetBlock(value common.Hash) {
+	s.SetState(common.MintedRecordAddressBinary, slotMintedRecordOnsetBlock, value)
+}
+
+func (s *StateDB) GetPostMinted(epoch uint64) common.Hash {
+	hash := common.BigToHash(new(big.Int).Add(slotMintedRecordPostMintedBase, new(big.Int).SetUint64(epoch)))
+	return s.GetState(common.MintedRecordAddressBinary, hash)
+}
+
+func (s *StateDB) PutPostMinted(epoch uint64, value common.Hash) {
+	hash := common.BigToHash(new(big.Int).Add(slotMintedRecordPostMintedBase, new(big.Int).SetUint64(epoch)))
+	s.SetState(common.MintedRecordAddressBinary, hash, value)
+}
+
+func (s *StateDB) GetPostBurned(epoch uint64) common.Hash {
+	hash := common.BigToHash(new(big.Int).Add(slotMintedRecordPostBurnedBase, new(big.Int).SetUint64(epoch)))
+	return s.GetState(common.MintedRecordAddressBinary, hash)
+}
+
+func (s *StateDB) PutPostBurned(epoch uint64, value common.Hash) {
+	hash := common.BigToHash(new(big.Int).Add(slotMintedRecordPostBurnedBase, new(big.Int).SetUint64(epoch)))
+	s.SetState(common.MintedRecordAddressBinary, hash, value)
+}
+
+func (s *StateDB) GetPostRewardBlock(epoch uint64) common.Hash {
+	hash := common.BigToHash(new(big.Int).Add(slotMintedRecordPostRewardBlockBase, new(big.Int).SetUint64(epoch)))
+	return s.GetState(common.MintedRecordAddressBinary, hash)
+}
+
+func (s *StateDB) PutPostRewardBlock(epoch uint64, value common.Hash) {
+	hash := common.BigToHash(new(big.Int).Add(slotMintedRecordPostRewardBlockBase, new(big.Int).SetUint64(epoch)))
+	s.SetState(common.MintedRecordAddressBinary, hash, value)
 }
