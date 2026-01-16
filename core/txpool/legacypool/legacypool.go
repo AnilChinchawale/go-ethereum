@@ -1372,7 +1372,6 @@ func (pool *LegacyPool) reset(oldHead, newHead *types.Header) {
 			log.Debug("Skipping deep transaction reorg", "depth", depth)
 		} else {
 			// Reorg seems shallow enough to pull in all transactions into memory
-			var discarded, included types.Transactions
 			var (
 				rem = pool.chain.GetBlock(oldHead.Hash(), oldHead.Number.Uint64())
 				add = pool.chain.GetBlock(newHead.Hash(), newHead.Number.Uint64())
@@ -1401,6 +1400,7 @@ func (pool *LegacyPool) reset(oldHead, newHead *types.Header) {
 					log.Warn("Transaction pool reset with missing new head", "number", newHead.Number, "hash", newHead.Hash())
 					return
 				}
+				var discarded, included types.Transactions
 				for rem.NumberU64() > add.NumberU64() {
 					discarded = append(discarded, rem.Transactions()...)
 					if rem = pool.chain.GetBlock(rem.ParentHash(), rem.NumberU64()-1); rem == nil {
