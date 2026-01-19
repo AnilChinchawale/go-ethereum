@@ -526,9 +526,6 @@ func opSload(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
 }
 
 func opSstore(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
-	if evm.readOnly {
-		return nil, ErrWriteProtection
-	}
 	loc := scope.Stack.pop()
 	val := scope.Stack.pop()
 	evm.StateDB.SetState(scope.Contract.Address(), loc.Bytes32(), val.Bytes32())
@@ -680,10 +677,6 @@ func opCall(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
 	// Get the arguments from the memory.
 	args := scope.Memory.GetPtr(int64(inOffset.Uint64()), int64(inSize.Uint64()))
 
-	if evm.readOnly && !value.IsZero() {
-		return nil, ErrWriteProtection
-	}
-
 	var bigVal = big0
 	// TODO(daniel): use uint256.Int instead of converting with toBig()
 	// By using big0 here, we save an alloc for the most common case (non-ether-transferring contract calls),
@@ -692,7 +685,6 @@ func opCall(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
 		gas += params.CallStipend
 		bigVal = value.ToBig()
 	}
-
 	ret, returnGas, err := evm.Call(scope.Contract, toAddr, args, gas, bigVal)
 
 	if err != nil {
@@ -829,9 +821,6 @@ func opStop(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
 }
 
 func opSelfdestruct(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
-	if evm.readOnly {
-		return nil, ErrWriteProtection
-	}
 	beneficiary := scope.Stack.pop()
 	balance := evm.StateDB.GetBalance(scope.Contract.Address())
 	evm.StateDB.AddBalance(beneficiary.Bytes20(), balance, tracing.BalanceIncreaseSelfdestruct)
@@ -848,9 +837,6 @@ func opSelfdestruct(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
 }
 
 func opSelfdestruct6780(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
-	if evm.readOnly {
-		return nil, ErrWriteProtection
-	}
 	beneficiary := scope.Stack.pop()
 	balance := evm.StateDB.GetBalance(scope.Contract.Address())
 	evm.StateDB.SubBalance(scope.Contract.Address(), balance, tracing.BalanceDecreaseSelfdestruct)
