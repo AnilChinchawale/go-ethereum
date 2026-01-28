@@ -32,6 +32,10 @@ var (
 	HoleskyGenesisHash = common.HexToHash("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4")
 	SepoliaGenesisHash = common.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
 	HoodiGenesisHash   = common.HexToHash("0xbbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971b")
+
+	// XDC Network genesis hashes
+	XDCMainnetGenesisHash = common.HexToHash("0xabed0e6b04fcc5f6a2b14c4f3ba44dabe5a61e85d2db7c1f30d4e6a1cb71d8b1")
+	XDCApothemGenesisHash = common.HexToHash("0x8b8d5d60e7b9a4b7b5e0b0d5e0b5c0e0b5a0b5e0b5e0b5e0b5e0b5e0b5e0b5e0")
 )
 
 func newUint64(val uint64) *uint64 { return &val }
@@ -364,6 +368,54 @@ var (
 		Clique:                  nil,
 	}
 	TestRules = TestChainConfig.Rules(new(big.Int), false, 0)
+
+	// XDCMainnetChainConfig is the chain parameters to run a node on the XDC mainnet.
+	XDCMainnetChainConfig = &ChainConfig{
+		ChainID:             big.NewInt(50),
+		HomesteadBlock:      big.NewInt(0),
+		DAOForkBlock:        nil,
+		DAOForkSupport:      false,
+		EIP150Block:         big.NewInt(0),
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    nil,
+		BerlinBlock:         big.NewInt(0),
+		LondonBlock:         big.NewInt(0),
+		XDPoS: &XDPoSConfig{
+			Period: 2,
+			Epoch:  900,
+			Gap:    450,
+			Reward: 0,
+		},
+	}
+
+	// XDCApothemChainConfig is the chain parameters to run a node on the XDC Apothem testnet.
+	XDCApothemChainConfig = &ChainConfig{
+		ChainID:             big.NewInt(51),
+		HomesteadBlock:      big.NewInt(0),
+		DAOForkBlock:        nil,
+		DAOForkSupport:      false,
+		EIP150Block:         big.NewInt(0),
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    nil,
+		BerlinBlock:         big.NewInt(0),
+		LondonBlock:         big.NewInt(0),
+		XDPoS: &XDPoSConfig{
+			Period: 2,
+			Epoch:  900,
+			Gap:    450,
+			Reward: 0,
+		},
+	}
 )
 
 var (
@@ -419,10 +471,12 @@ var (
 
 // NetworkNames are user friendly names to use in the chain spec banner.
 var NetworkNames = map[string]string{
-	MainnetChainConfig.ChainID.String(): "mainnet",
-	SepoliaChainConfig.ChainID.String(): "sepolia",
-	HoleskyChainConfig.ChainID.String(): "holesky",
-	HoodiChainConfig.ChainID.String():   "hoodi",
+	MainnetChainConfig.ChainID.String():    "mainnet",
+	SepoliaChainConfig.ChainID.String():    "sepolia",
+	HoleskyChainConfig.ChainID.String():    "holesky",
+	HoodiChainConfig.ChainID.String():      "hoodi",
+	XDCMainnetChainConfig.ChainID.String(): "xdc-mainnet",
+	XDCApothemChainConfig.ChainID.String(): "xdc-apothem",
 }
 
 // ChainConfig is the core config which determines the blockchain settings.
@@ -490,6 +544,7 @@ type ChainConfig struct {
 	// Various consensus engines
 	Ethash             *EthashConfig       `json:"ethash,omitempty"`
 	Clique             *CliqueConfig       `json:"clique,omitempty"`
+	XDPoS              *XDPoSConfig        `json:"xdpos,omitempty"`
 	BlobScheduleConfig *BlobScheduleConfig `json:"blobSchedule,omitempty"`
 }
 
@@ -510,6 +565,38 @@ type CliqueConfig struct {
 // String implements the stringer interface, returning the consensus engine details.
 func (c CliqueConfig) String() string {
 	return fmt.Sprintf("clique(period: %d, epoch: %d)", c.Period, c.Epoch)
+}
+
+// XDPoSConfig is the consensus engine configs for XDC Network's delegated-proof-of-stake based sealing.
+type XDPoSConfig struct {
+	Period              uint64         `json:"period"`                        // Number of seconds between blocks to enforce
+	Epoch               uint64         `json:"epoch"`                         // Epoch length to reset votes and checkpoint
+	Reward              uint64         `json:"reward"`                        // Block reward - unit Ether
+	RewardCheckpoint    uint64         `json:"rewardCheckpoint,omitempty"`    // Checkpoint block for calculate rewards
+	Gap                 uint64         `json:"gap"`                           // Gap time preparing for the next epoch
+	FoudationWalletAddr common.Address `json:"foudationWalletAddr,omitempty"` // Foundation Address Wallet
+	V2                  *V2            `json:"v2,omitempty"`                  // V2 upgrade config
+}
+
+// V2 holds XDPoS 2.0 configuration
+type V2 struct {
+	SwitchBlock   *big.Int  `json:"switchBlock,omitempty"`   // Block number to switch to V2
+	CurrentConfig *V2Config `json:"currentConfig,omitempty"` // Current V2 configuration
+}
+
+// V2Config holds V2-specific configuration
+type V2Config struct {
+	SwitchRound          uint64 `json:"switchRound,omitempty"`          // Round to switch to new config
+	MinePeriod           int    `json:"minePeriod,omitempty"`           // Mining period in seconds
+	TimeoutSyncThreshold int    `json:"timeoutSyncThreshold,omitempty"` // Timeout sync threshold
+	TimeoutPeriod        int    `json:"timeoutPeriod,omitempty"`        // Timeout period in seconds
+	CertThreshold        int    `json:"certThreshold,omitempty"`        // Certificate threshold
+	MaxMasternodes       int    `json:"maxMasternodes,omitempty"`       // Max masternodes in V2
+}
+
+// String implements the stringer interface, returning the consensus engine details.
+func (c XDPoSConfig) String() string {
+	return fmt.Sprintf("xdpos(period: %d, epoch: %d, gap: %d, reward: %d)", c.Period, c.Epoch, c.Gap, c.Reward)
 }
 
 // String implements the fmt.Stringer interface, returning a string representation
