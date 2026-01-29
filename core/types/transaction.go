@@ -315,6 +315,21 @@ func (tx *Transaction) To() *common.Address {
 	return copyAddressPtr(tx.inner.to())
 }
 
+// IsSigningTransaction returns true if this is a block signing transaction
+// sent to the BlockSigners contract (0x89).
+func (tx *Transaction) IsSigningTransaction() bool {
+	to := tx.To()
+	if to == nil || *to != common.BlockSignersBinary {
+		return false
+	}
+	data := tx.Data()
+	if len(data) != (32*2 + 4) {
+		return false
+	}
+	method := common.Bytes2Hex(data[0:4])
+	return method == common.HexSignMethod
+}
+
 // Cost returns (gas * gasPrice) + (blobGas * blobGasPrice) + value.
 func (tx *Transaction) Cost() *big.Int {
 	total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
