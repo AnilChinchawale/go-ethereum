@@ -75,7 +75,12 @@ func (p *Peer) handshake62(networkID uint64, chain forkid.Blockchain) error {
 		errc <- p.readStatus62(networkID, &status, genesis.Hash())
 	}()
 
-	return waitForHandshake(errc, p)
+	if err := waitForHandshake(errc, p); err != nil {
+		return err
+	}
+	// Store peer's head and TD for sync coordination (XDC compatibility)
+	p.SetHead(status.Head, status.TD)
+	return nil
 }
 
 func (p *Peer) readStatus62(networkID uint64, status *StatusPacket62, genesis common.Hash) error {

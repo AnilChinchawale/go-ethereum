@@ -32,9 +32,10 @@ import (
 const (
 	ETH62  = 62  // XDC compatible
 	ETH63  = 63  // XDC compatible
+	ETH66  = 66  // eth/66: introduced RequestId wrapping
 	ETH68  = 68
 	ETH69  = 69
-	XDPOS2 = 100 // XDC custom protocol
+	XDPOS2 = 100 // XDC custom protocol (uses eth/63 style messages)
 )
 
 // ProtocolName is the official short name of the `eth` protocol used during
@@ -43,7 +44,8 @@ const ProtocolName = "eth"
 
 // ProtocolVersions are the supported versions of the `eth` protocol (first
 // is primary). XDC uses eth/62, eth/63, and xdpos2/100.
-var ProtocolVersions = []uint{XDPOS2, ETH63, ETH62, ETH69, ETH68}
+// XDC only supports xdpos2, eth63, eth62 - do not advertise eth68/69
+var ProtocolVersions = []uint{XDPOS2, ETH63, ETH62}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.

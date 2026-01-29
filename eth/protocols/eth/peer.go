@@ -17,7 +17,9 @@
 package eth
 
 import (
+	"math/big"
 	"math/rand"
+	"sync"
 	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -49,6 +51,11 @@ type Peer struct {
 	rw        p2p.MsgReadWriter // Input/output streams for snap
 	version   uint              // Protocol version negotiated
 	lastRange atomic.Pointer[BlockRangeUpdatePacket]
+
+	// XDC compatibility: store peer's head and total difficulty
+	head     common.Hash
+	td       *big.Int
+	headLock sync.RWMutex
 
 	txpool      TxPool             // Transaction pool used by the broadcasters for liveness checks
 	knownTxs    *knownCache        // Set of transaction hashes known to be known by this peer
@@ -102,6 +109,25 @@ func (p *Peer) ID() string {
 // Version retrieves the peer's negotiated `eth` protocol version.
 func (p *Peer) Version() uint {
 	return p.version
+}
+
+// Head retrieves the current head hash and total difficulty of the peer.
+// Used by XDC for sync coordination.
+func (p *Peer) Head() (hash common.Hash, td *big.Int) {
+	p.headLock.RLock()
+	defer p.headLock.RUnlock()
+	return p.head, p.td
+}
+
+// SetHead updates the head hash and total difficulty of the peer.
+// Used by XDC for sync coordination.
+func (p *Peer) SetHead(hash common.Hash, td *big.Int) {
+	p.headLock.Lock()
+	defer p.headLock.Unlock()
+	p.head = hash
+	if td != nil {
+		p.td = new(big.Int).Set(td)
+	}
 }
 
 // BlockRange returns the latest announced block range.
@@ -198,6 +224,12 @@ func (p *Peer) ReplyBlockHeadersRLP(id uint64, headers []rlp.RawValue) error {
 	})
 }
 
+// ReplyBlockHeadersRLPLegacy is the response to GetBlockHeaders for legacy protocols (eth/63, XDC)
+// that don't use RequestId wrapping.
+func (p *Peer) ReplyBlockHeadersRLPLegacy(headers []rlp.RawValue) error {
+	return p2p.Send(p.rw, BlockHeadersMsg, headers)
+}
+
 // ReplyBlockBodiesRLP is the response to GetBlockBodies.
 func (p *Peer) ReplyBlockBodiesRLP(id uint64, bodies []rlp.RawValue) error {
 	// Not packed into BlockBodiesResponse to avoid RLP decoding
@@ -205,6 +237,11 @@ func (p *Peer) ReplyBlockBodiesRLP(id uint64, bodies []rlp.RawValue) error {
 		RequestId:              id,
 		BlockBodiesRLPResponse: bodies,
 	})
+}
+
+// ReplyBlockBodiesRLPLegacy is the response to GetBlockBodies for legacy protocols.
+func (p *Peer) ReplyBlockBodiesRLPLegacy(bodies []rlp.RawValue) error {
+	return p2p.Send(p.rw, BlockBodiesMsg, bodies)
 }
 
 // ReplyReceiptsRLP is the response to GetReceipts.

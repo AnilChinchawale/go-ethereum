@@ -1,0 +1,74 @@
+=============== Jan 29, 2026 (CET) ===============
+07:59:52.258272 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+07:59:52.310792 db@open opening
+07:59:52.311344 version@stat F·[] S·0B[] Sc·[]
+07:59:52.319450 db@janitor F·2 G·0
+07:59:52.319482 db@open done T·8.665421ms
+=============== Jan 29, 2026 (CET) ===============
+08:00:43.392777 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:00:43.393226 version@stat F·[] S·0B[] Sc·[]
+08:00:43.393280 db@open opening
+08:00:43.393448 journal@recovery F·1
+08:00:43.394475 journal@recovery recovering @1
+08:00:43.414125 memdb@flush created L0@2 N·1 S·123B "version,v1":"version,v1"
+08:00:43.414986 version@stat F·[1] S·123B[123B] Sc·[0.25]
+08:00:43.454536 db@janitor F·3 G·0
+08:00:43.454563 db@open done T·61.268114ms
+=============== Jan 29, 2026 (CET) ===============
+08:01:41.899211 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:01:41.899528 version@stat F·[1] S·123B[123B] Sc·[0.25]
+08:01:41.899554 db@open opening
+08:01:41.899609 journal@recovery F·1
+08:01:41.902914 journal@recovery recovering @3
+08:01:41.930381 memdb@flush created L0@5 N·4 S·457B "n:\x97..ing,v4":"n:\xfd..ing,v5"
+08:01:41.933182 version@stat F·[2] S·580B[580B] Sc·[0.50]
+08:01:41.965582 db@janitor F·4 G·0
+08:01:41.965624 db@open done T·66.063444ms
+=============== Jan 29, 2026 (CET) ===============
+08:03:12.020049 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:03:12.020362 version@stat F·[2] S·580B[580B] Sc·[0.50]
+08:03:12.020395 db@open opening
+08:03:12.020473 journal@recovery F·1
+08:03:12.021225 journal@recovery recovering @6
+08:03:12.050270 memdb@flush created L0@8 N·4 S·456B "n:\x97..ing,v9":"n:\xfd..ing,v11"
+08:03:12.051192 version@stat F·[3] S·1KiB[1KiB] Sc·[0.75]
+08:03:12.086465 db@janitor F·5 G·0
+08:03:12.086499 db@open done T·66.093789ms
+08:04:12.103516 table@compaction L0·2 -> L1·0 S·913B Q·93
+08:04:12.124928 table@build created L1@11 N·4 S·456B "n:\x97..ing,v9":"n:\xfd..ing,v11"
+08:04:12.125071 version@stat F·[1 1] S·579B[123B 456B] Sc·[0.25 0.00]
+08:04:12.133382 table@compaction committed F-1 S-457B Ke·0 D·4 T·29.747568ms
+08:04:12.133692 table@remove removed @5
+08:07:17.131091 db@close closing
+08:07:17.131110 db@close done T·23.949µs
+=============== Jan 29, 2026 (CET) ===============
+08:07:21.266889 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:07:21.267191 version@stat F·[1 1] S·579B[123B 456B] Sc·[0.25 0.00]
+08:07:21.267233 db@open opening
+08:07:21.267335 journal@recovery F·1
+08:07:21.268075 journal@recovery recovering @9
+08:07:21.297465 memdb@flush created L0@12 N·268 S·2KiB "n:\x97..ail,v38":"n:\xfd..ing,v16"
+08:07:21.298300 version@stat F·[2 1] S·3KiB[2KiB 456B] Sc·[0.50 0.00]
+08:07:21.332452 db@janitor F·6 G·1
+08:07:21.332476 db@janitor removing table-8
+08:07:21.332559 db@open done T·65.313225ms
+08:07:57.359446 table@compaction L0·1 -> L1·1 S·3KiB Q·323
+08:07:57.386846 table@build created L1@15 N·8 S·494B "n:\x97..ail,v38":"n:\xfd..ing,v278"
+08:07:57.386878 version@stat F·[1 1] S·617B[123B 494B] Sc·[0.25 0.00]
+08:07:57.402546 table@compaction committed F-1 S-2KiB Ke·0 D·264 T·43.077121ms
+08:07:57.402607 table@remove removed @11
+08:09:39.817765 db@close closing
+08:09:39.817789 db@close done T·28.452µs
+=============== Jan 29, 2026 (CET) ===============
+08:09:59.056849 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:09:59.057283 version@stat F·[1 1] S·617B[123B 494B] Sc·[0.25 0.00]
+08:09:59.057343 db@open opening
+08:09:59.057474 journal@recovery F·1
+08:09:59.062408 journal@recovery recovering @13
+08:09:59.070486 memdb@flush created L0@16 N·145 S·1KiB "n:\x97..ail,v286":"n:\xfd..ing,v284"
+08:09:59.076281 version@stat F·[2 1] S·2KiB[1KiB 494B] Sc·[0.50 0.00]
+08:09:59.109008 db@janitor F·6 G·1
+08:09:59.109029 db@janitor removing table-12
+08:09:59.109097 db@open done T·51.73834ms
+08:12:03.459636 db@close closing
+08:12:03.459665 db@close done T·35.278µs
