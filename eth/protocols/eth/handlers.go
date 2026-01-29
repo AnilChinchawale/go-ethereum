@@ -430,19 +430,11 @@ func handleBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
 		log.Debug("Legacy BlockHeaders decode failed", "version", version, "err", err)
 		return err
 	}
-	log.Debug("Using legacy BlockHeaders format", "version", version)
-	metadata := func() interface{} {
-		hashes := make([]common.Hash, len(legacyRes))
-		for i, header := range legacyRes {
-			hashes[i] = header.Hash()
-		}
-		return hashes
-	}
-	return peer.dispatchResponse(&Response{
-		id:   0,
-		code: BlockHeadersMsg,
-		Res:  &legacyRes,
-	}, metadata)
+	log.Info("XDC: received legacy BlockHeaders", "version", version, "count", len(legacyRes))
+	
+	// For XDC legacy sync, pass headers directly to backend for processing
+	// instead of using dispatcher (which expects RequestId matching)
+	return backend.Handle(peer, &legacyRes)
 }
 
 func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {

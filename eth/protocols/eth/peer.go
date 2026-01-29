@@ -434,3 +434,27 @@ func (k *knownCache) Contains(hash common.Hash) bool {
 func (k *knownCache) Cardinality() int {
 	return k.hashes.Cardinality()
 }
+
+// RequestHeadersByNumberLegacy fetches headers using eth/62-63 format (no RequestId)
+// Used for XDC compatibility
+func (p *Peer) RequestHeadersByNumberLegacy(origin uint64, amount int, skip int, reverse bool) error {
+	p.Log().Debug("Fetching headers (legacy)", "count", amount, "fromnum", origin, "skip", skip, "reverse", reverse)
+	
+	// eth/62-63 format: just the request data, no RequestId wrapper
+	req := &GetBlockHeadersRequest{
+		Origin:  HashOrNumber{Number: origin},
+		Amount:  uint64(amount),
+		Skip:    uint64(skip),
+		Reverse: reverse,
+	}
+	return p2p.Send(p.rw, GetBlockHeadersMsg, req)
+}
+
+// RequestBodiesLegacy fetches bodies using eth/62-63 format (no RequestId)
+// Used for XDC compatibility
+func (p *Peer) RequestBodiesLegacy(hashes []common.Hash) error {
+	p.Log().Debug("Fetching bodies (legacy)", "count", len(hashes))
+	
+	// eth/62-63 format: just the hashes, no RequestId wrapper
+	return p2p.Send(p.rw, GetBlockBodiesMsg, hashes)
+}

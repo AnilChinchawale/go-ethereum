@@ -133,6 +133,9 @@ type handler struct {
 
 	requiredBlocks map[uint64]common.Hash
 
+	// XDC pre-merge syncer
+	xdcSyncer *xdcSyncer
+
 	// channels for fetcher, syncer, txsyncLoop
 	quitSync chan struct{}
 
@@ -191,6 +194,10 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 
 	h.txFetcher = fetcher.NewTxFetcher(validateMeta, addTxs, fetchTx, h.removePeer)
+
+	// Initialize XDC pre-merge syncer
+	h.xdcSyncer = newXDCSyncer(h)
+
 	return h, nil
 }
 
@@ -295,6 +302,11 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// Propagate existing transactions. new transactions appearing
 	// after this will be sent via broadcasts.
 	h.syncTransactions(peer)
+
+	// Notify XDC syncer about new peer
+	if h.xdcSyncer != nil {
+		h.xdcSyncer.notifyPeer(peer)
+	}
 
 	// Create a notification channel for pending requests if the peer goes down
 	dead := make(chan struct{})
@@ -428,6 +440,11 @@ func (h *handler) Start(maxPeers int) {
 	// start sync handlers
 	h.txFetcher.Start()
 
+	// Start XDC pre-merge syncer
+	if h.xdcSyncer != nil {
+		h.xdcSyncer.start()
+	}
+
 	// start peer handler tracker
 	h.wg.Add(1)
 	go h.protoTracker()
@@ -438,6 +455,11 @@ func (h *handler) Stop() {
 	h.blockRange.stop()
 	h.txFetcher.Stop()
 	h.downloader.Terminate()
+
+	// Stop XDC syncer
+	if h.xdcSyncer != nil {
+		h.xdcSyncer.stop()
+	}
 
 	// Quit chainSync and txsync64.
 	// After this is done, no new peers will be accepted.
