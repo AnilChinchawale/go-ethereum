@@ -41,6 +41,44 @@ const (
 	AddressLength = 20
 )
 
+// XDC-specific constants
+const (
+	BlockSigners                     = "xdc0000000000000000000000000000000000000089"
+	MasternodeVotingSMC              = "xdc0000000000000000000000000000000000000088"
+	RandomizeSMC                     = "xdc0000000000000000000000000000000000000090"
+	FoudationAddr                    = "xdc0000000000000000000000000000000000000068"
+	TeamAddr                         = "xdc0000000000000000000000000000000000000099"
+	XDCXAddr                         = "xdc0000000000000000000000000000000000000091"
+	TradingStateAddr                 = "xdc0000000000000000000000000000000000000092"
+	XDCXLendingAddress               = "xdc0000000000000000000000000000000000000093"
+	XDCXLendingFinalizedTradeAddress = "xdc0000000000000000000000000000000000000094"
+	XDCNativeAddress                 = "xdc0000000000000000000000000000000000000001"
+	LendingLockAddress               = "xdc0000000000000000000000000000000000000011"
+
+	// Method signatures for XDPoS contracts
+	VoteMethod      = "0x6dd7d8ea"
+	UnvoteMethod    = "0x02aa9be2"
+	ProposeMethod   = "0x01267951"
+	ResignMethod    = "0xae6e43f5"
+	SignMethod      = "0xe341eaa4"
+	XDCXApplyMethod = "0xc6b32f34"
+	XDCZApplyMethod = "0xc6b32f34"
+	HexSignMethod   = "e341eaa4"
+	HexSetSecret    = "34d38600"
+	HexSetOpening   = "e11f5ba2"
+
+	// Reward percentages
+	RewardMasterPercent     = 40
+	RewardVoterPercent      = 50
+	RewardFoundationPercent = 10
+
+	// Epoch block constants
+	MergeSignRange   = 15
+	EpocBlockSecret  = 800
+	EpocBlockOpening = 850
+	EpocBlockRandomize = 900
+)
+
 var (
 	hashT    = reflect.TypeFor[Hash]()
 	addressT = reflect.TypeFor[Address]()
@@ -50,10 +88,33 @@ var (
 
 	// MaxHash represents the maximum possible hash value.
 	MaxHash = HexToHash("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+
+	// XDC contract addresses (binary form)
+	BlockSignersBinary                     = HexToAddress("0x0000000000000000000000000000000000000089")
+	MasternodeVotingSMCBinary              = HexToAddress("0x0000000000000000000000000000000000000088")
+	RandomizeSMCBinary                     = HexToAddress("0x0000000000000000000000000000000000000090")
+	FoudationAddrBinary                    = HexToAddress("0x0000000000000000000000000000000000000068")
+	TeamAddrBinary                         = HexToAddress("0x0000000000000000000000000000000000000099")
+	XDCXAddrBinary                         = HexToAddress("0x0000000000000000000000000000000000000091")
+	TradingStateAddrBinary                 = HexToAddress("0x0000000000000000000000000000000000000092")
+	XDCXLendingAddressBinary               = HexToAddress("0x0000000000000000000000000000000000000093")
+	XDCXLendingFinalizedTradeAddressBinary = HexToAddress("0x0000000000000000000000000000000000000094")
+	XDCNativeAddressBinary                 = HexToAddress("0x0000000000000000000000000000000000000001")
+	LendingLockAddressBinary               = HexToAddress("0x0000000000000000000000000000000000000011")
+	MintedRecordAddressBinary              = HexToAddress("0x000000000000000000000000000000000000009a")
+
+	// TIP2019 block number for XDPoS reward updates
+	TIP2019Block = big.NewInt(0)
 )
 
 // Hash represents the 32 byte Keccak256 hash of arbitrary data.
 type Hash [HashLength]byte
+
+// Vote represents a masternode vote from a voter
+type Vote struct {
+	Masternode Address
+	Voter      Address
+}
 
 // BytesToHash sets b to hash.
 // If b is larger than len(h), b will be cropped from the left.
@@ -338,12 +399,28 @@ func (a Address) MarshalText() ([]byte, error) {
 }
 
 // UnmarshalText parses a hash in hex syntax.
+// Supports both "0x" and "xdc" prefixes for XDC Network compatibility.
 func (a *Address) UnmarshalText(input []byte) error {
+	// Convert xdc prefix to 0x for hexutil compatibility
+	inputStr := string(input)
+	if len(inputStr) >= 3 && (inputStr[0] == 'x' || inputStr[0] == 'X') && 
+		(inputStr[1] == 'd' || inputStr[1] == 'D') && (inputStr[2] == 'c' || inputStr[2] == 'C') {
+		input = []byte("0x" + inputStr[3:])
+	}
 	return hexutil.UnmarshalFixedText("Address", input, a[:])
 }
 
 // UnmarshalJSON parses a hash in hex syntax.
+// Supports both "0x" and "xdc" prefixes for XDC Network compatibility.
 func (a *Address) UnmarshalJSON(input []byte) error {
+	// Remove quotes and check for xdc prefix
+	if len(input) >= 2 && input[0] == '"' && input[len(input)-1] == '"' {
+		inputStr := string(input[1 : len(input)-1])
+		if len(inputStr) >= 3 && (inputStr[0] == 'x' || inputStr[0] == 'X') && 
+			(inputStr[1] == 'd' || inputStr[1] == 'D') && (inputStr[2] == 'c' || inputStr[2] == 'C') {
+			input = []byte("\"0x" + inputStr[3:] + "\"")
+		}
+	}
 	return hexutil.UnmarshalFixedJSON(addressT, input, a[:])
 }
 
