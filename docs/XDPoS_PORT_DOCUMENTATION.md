@@ -279,3 +279,43 @@ tail -f logs/geth.log | grep -E "Imported|Rewards|ERROR"
 | 30,000+ | 🔄 Syncing |
 
 All checkpoint state roots match v2.6.8 reference node.
+
+---
+
+## Troubleshooting
+
+### "shutting down" Error Messages
+
+**Symptom:**
+```
+WARN XDC sync failed, retrying err="failed to request bodies: shutting down"
+```
+
+**Cause:** This is NOT a crash. It's the sync protocol gracefully handling peer disconnects. When a peer times out, pending requests are cancelled.
+
+**Impact:** None - the node automatically retries with other peers.
+
+### Peer Drops to 0
+
+**Symptom:** Peer count drops to 0 temporarily during sync.
+
+**Cause:** During fast sync, the node requests large amounts of data. Slow peers timeout and get dropped.
+
+**Impact:** Minor - peers automatically reconnect within seconds.
+
+### Auto-Restart Monitor
+
+A monitoring script is available at `monitor.sh`:
+```bash
+# Start monitor
+nohup ./monitor.sh > logs/monitor.log 2>&1 &
+
+# Check monitor log
+tail -f logs/monitor.log
+```
+
+The monitor:
+- Checks node every 30 seconds
+- Auto-restarts if process dies
+- Auto-restarts if RPC unresponsive
+
