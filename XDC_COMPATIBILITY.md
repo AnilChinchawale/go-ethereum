@@ -83,11 +83,24 @@ Add production peer as trusted for testing:
 admin.addTrustedPeer("enode://...")
 ```
 
-## Known Limitations
+## Current Status
+
+### Working ✅
+- Peer connection to XDC mainnet
+- Block broadcasts received (live blocks)
+- XDPoS V2 header validation (blocks >= 80370000)
+- Protocol handshake (eth/62, eth/63, eth/100)
+
+### In Progress ⏳
+- Historical sync (requesting past blocks from peer)
+- Full chain download from genesis
+
+### Known Limitations
 
 1. **Snap sync disabled** - XDC doesn't support snap protocol
 2. **No eth/68-69** - Removed to avoid protocol conflicts
 3. **Pre-merge only** - XDC is pre-merge, TD-based consensus
+4. **Read-only mode** - V2 validation doesn't verify quorum certs (suitable for RPC nodes)
 
 ## Files Modified
 
