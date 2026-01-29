@@ -45,7 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	// "github.com/ethereum/go-ethereum/eth/protocols/snap" // Disabled for XDC compatibility
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -434,9 +434,11 @@ func (s *Ethereum) ArchiveMode() bool                  { return s.config.NoPruni
 // network protocols to start.
 func (s *Ethereum) Protocols() []p2p.Protocol {
 	protos := eth.MakeProtocols((*ethHandler)(s.handler), s.networkID, s.discmix)
-	if s.config.SnapshotCache > 0 {
-		protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler))...)
-	}
+	// XDC uses eth/62, eth/63 which are not compatible with snap protocol.
+	// Snap sync requires eth/67+ so we disable it for XDC networks.
+	// if s.config.SnapshotCache > 0 {
+	// 	protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler))...)
+	// }
 	return protos
 }
 

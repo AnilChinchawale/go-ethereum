@@ -23,6 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/XDPoS"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -214,7 +215,17 @@ type Config struct {
 // CreateConsensusEngine creates a consensus engine for the given chain config.
 // Clique is allowed for now to live standalone, but ethash is forbidden and can
 // only exist on already merged networks.
+// XDPoS is the native consensus for XDC Network.
 func CreateConsensusEngine(config *params.ChainConfig, db ethdb.Database) (consensus.Engine, error) {
+	// XDPoS consensus for XDC Network (chain IDs 50 and 51)
+	if config.XDPoS != nil {
+		log.Info("Creating XDPoS consensus engine", "chainID", config.ChainID)
+		engine := XDPoS.New(config.XDPoS, db)
+		// Set up the default reward hook
+		engine.HookReward = engine.CreateDefaultHookReward()
+		return engine, nil
+	}
+	
 	if config.TerminalTotalDifficulty == nil {
 		log.Error("Geth only supports PoS networks. Please transition legacy networks using Geth v1.13.x.")
 		return nil, errors.New("'terminalTotalDifficulty' is not set in genesis block")
