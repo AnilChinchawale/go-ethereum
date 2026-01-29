@@ -122,6 +122,9 @@ var (
 	localGauge   = metrics.NewRegisteredGauge("txpool/local", nil)
 	slotsGauge   = metrics.NewRegisteredGauge("txpool/slots", nil)
 
+	pendingAddrsGauge = metrics.NewRegisteredGauge("txpool/pending/accounts", nil)
+	queuedAddrsGauge  = metrics.NewRegisteredGauge("txpool/queued/accounts", nil)
+
 	reheapTimer = metrics.NewRegisteredTimer("txpool/reheap", nil)
 )
 
@@ -974,6 +977,7 @@ func (pool *LegacyPool) enqueueTx(hash common.Hash, tx *types.Transaction, local
 	from, _ := types.Sender(pool.signer, tx) // already validated
 	if pool.queue[from] == nil {
 		pool.queue[from] = newList(false)
+		queuedAddrsGauge.Inc(1)
 	}
 	inserted, old := pool.queue[from].Add(tx, pool.config.PriceBump)
 	if !inserted {
@@ -1026,6 +1030,7 @@ func (pool *LegacyPool) promoteTx(addr common.Address, hash common.Hash, tx *typ
 	// Try to insert the transaction into the pending queue
 	if pool.pending[addr] == nil {
 		pool.pending[addr] = newList(true)
+		pendingAddrsGauge.Inc(1)
 	}
 	list := pool.pending[addr]
 
@@ -1059,6 +1064,7 @@ func (pool *LegacyPool) promoteSpecialTx(addr common.Address, tx *types.Transact
 	// Try to insert the transaction into the pending queue
 	if pool.pending[addr] == nil {
 		pool.pending[addr] = newList(true)
+		pendingAddrsGauge.Inc(1)
 	}
 	list := pool.pending[addr]
 
@@ -1299,6 +1305,7 @@ func (pool *LegacyPool) removeTx(hash common.Hash, outofbound bool, unreserve bo
 			// If no more pending transactions are left, remove the list
 			if pending.Empty() {
 				delete(pool.pending, addr)
+				pendingAddrsGauge.Dec(1)
 			}
 			// Postpone any invalidated transactions
 			for _, tx := range invalids {
@@ -1321,6 +1328,7 @@ func (pool *LegacyPool) removeTx(hash common.Hash, outofbound bool, unreserve bo
 		if future.Empty() {
 			delete(pool.queue, addr)
 			delete(pool.beats, addr)
+			queuedAddrsGauge.Dec(1)
 		}
 	}
 	return 0
@@ -1676,6 +1684,7 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 		if list.Empty() {
 			delete(pool.queue, addr)
 			delete(pool.beats, addr)
+			queuedAddrsGauge.Dec(1)
 			if _, ok := pool.pending[addr]; !ok {
 				pool.reserver.Release(addr)
 			}
@@ -1876,6 +1885,7 @@ func (pool *LegacyPool) demoteUnexecutables() {
 		// Delete the entire pending entry if it became empty.
 		if list.Empty() {
 			delete(pool.pending, addr)
+			pendingAddrsGauge.Dec(1)
 			if _, ok := pool.queue[addr]; !ok {
 				pool.reserver.Release(addr)
 			}
@@ -2241,6 +2251,10 @@ func (pool *LegacyPool) Clear() {
 	pool.pending = make(map[common.Address]*list)
 	pool.queue = make(map[common.Address]*list)
 	pool.pendingNonces = newNoncer(pool.currentState)
+
+	// Reset gauges
+	pendingAddrsGauge.Update(0)
+	queuedAddrsGauge.Update(0)
 }
 
 // HasPendingAuth returns a flag indicating whether there are pending
