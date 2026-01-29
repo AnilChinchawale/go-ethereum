@@ -13,7 +13,14 @@
       "reward": 5000,
       "rewardCheckpoint": 900,
       "gap": 450,
-      "foudationWalletAddr": "0x92a289fe95a85c53b8d0d113cbaef0c1ec98ac65"
+      "foudationWalletAddr": "0x92a289fe95a85c53b8d0d113cbaef0c1ec98ac65",
+      "v2": {
+        "switchBlock": 80370000,
+        "minePeriod": 2,
+        "timeoutPeriod": 10,
+        "timeoutSyncThreshold": 3,
+        "certThreshold": 12
+      }
     }
   },
   "nonce": "0x0",

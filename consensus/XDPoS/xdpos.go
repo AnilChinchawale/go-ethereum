@@ -363,6 +363,14 @@ func (c *XDPoS) verifyHeader(chain consensus.ChainHeaderReader, header *types.He
 	}
 	number := header.Number.Uint64()
 
+	// XDPoS 2.0: For V2 blocks, use simplified validation (read-only sync mode)
+	// V2 blocks have completely different extra data format with quorum certificates
+	if c.config.V2 != nil && c.config.V2.SwitchBlock != nil && number >= c.config.V2.SwitchBlock.Uint64() {
+		return c.verifyHeaderV2(chain, header, parents)
+	}
+
+	// V1 validation below (for blocks before V2 switch)
+
 	// Don't waste time checking blocks from the future
 	if header.Time > uint64(time.Now().Unix()) {
 		return consensus.ErrFutureBlock
@@ -411,6 +419,33 @@ func (c *XDPoS) verifyHeader(chain consensus.ChainHeaderReader, header *types.He
 
 	// All basic checks passed, verify cascading fields
 	return c.verifyCascadingFields(chain, header, parents)
+}
+
+// verifyHeaderV2 performs minimal validation for XDPoS 2.0 blocks (read-only sync mode)
+// Full V2 validation requires quorum certificate verification which is not yet implemented
+func (c *XDPoS) verifyHeaderV2(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
+	number := header.Number.Uint64()
+
+	// Basic sanity checks
+	if header.Time > uint64(time.Now().Unix())+15 { // Allow 15 seconds drift
+		return consensus.ErrFutureBlock
+	}
+
+	// Gas limit check
+	if header.GasUsed > header.GasLimit {
+		return errors.New("gas used exceeds gas limit")
+	}
+
+	// Ensure no uncles (XDPoS doesn't have uncles)
+	if header.UncleHash != uncleHash {
+		return errInvalidUncleHash
+	}
+
+	// For read-only sync, accept V2 blocks without full quorum cert validation
+	// This allows syncing the chain for RPC access without participating in consensus
+	log.Debug("XDPoS V2 block accepted (read-only mode)", "number", number, "hash", header.Hash().Hex()[:10])
+	
+	return nil
 }
 
 // verifyCascadingFields verifies all the header fields that are not standalone,
