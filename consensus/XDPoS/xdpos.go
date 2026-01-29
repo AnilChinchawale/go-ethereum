@@ -405,8 +405,10 @@ func (c *XDPoS) verifyHeader(chain consensus.ChainHeaderReader, header *types.He
 	}
 
 	// Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
+	// NOTE: Skip this check for V2 blocks (after 80,370,000) - V2 consensus allows signers in non-checkpoint blocks
 	signersBytes := len(header.Extra) - extraVanity - extraSeal
-	if !checkpoint && signersBytes != 0 {
+	isV2Block := number > 80370000
+	if !checkpoint && signersBytes != 0 && !isV2Block {
 		return errExtraSigners
 	}
 	if checkpoint && signersBytes%common.AddressLength != 0 {
@@ -731,12 +733,25 @@ func (c *XDPoS) Prepare(chain consensus.ChainHeaderReader, header *types.Header)
 }
 
 // Finalize implements consensus.Engine.
+// Applies rewards at checkpoint blocks during both sync and normal operation.
 func (c *XDPoS) Finalize(chain consensus.ChainHeaderReader, header *types.Header, statedb vm.StateDB, body *types.Body) {
-	// Note: During sync, we do NOT apply rewards.
-	// XDC reward calculation requires reading from smart contracts (BlockSigner, Validator)
-	// which contain state from transactions. This creates a circular dependency during sync.
-	// The downloaded blocks already have the correct state root with rewards applied.
-	// Rewards are only applied in FinalizeAndAssemble for newly mined blocks.
+	number := header.Number.Uint64()
+	rCheckpoint := c.config.RewardCheckpoint
+	if rCheckpoint == 0 {
+		rCheckpoint = c.config.Epoch
+	}
+
+	// Apply rewards at checkpoint blocks
+	if number%rCheckpoint == 0 {
+		if sdb, ok := statedb.(*state.StateDB); ok {
+			// Pass chain directly - we read full blocks from the database
+			_, err := c.ApplyRewards(chain, sdb, sdb, header)
+			if err != nil {
+				log.Error("Error applying rewards in Finalize", "number", number, "err", err)
+			}
+		}
+	}
+
 	header.UncleHash = types.CalcUncleHash(nil)
 }
 

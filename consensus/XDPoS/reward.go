@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -28,192 +29,381 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// RewardConfig holds the configuration for block rewards
-type RewardConfig struct {
-	// BlockReward is the base block reward in wei
-	BlockReward *big.Int
-	// MasterPercent is the percentage of reward going to masternodes (90%)
-	MasterPercent int64
-	// VoterPercent is the percentage of reward going to voters (0% in current implementation)
-	VoterPercent int64
-	// FoundationPercent is the percentage of reward going to foundation (10%)
-	FoundationPercent int64
-	// FoundationWallet is the address receiving foundation rewards
-	FoundationWallet common.Address
+// Note: RewardMasterPercent, RewardVoterPercent, RewardFoundationPercent are defined in constants.go
+
+// RewardLog stores signing count and reward for a signer
+type RewardLog struct {
+	Sign   uint64
+	Reward *big.Int
 }
 
-// DefaultRewardConfig returns the default XDC reward configuration
-// Block reward: 5000 XDC per epoch (distributed among masternodes)
-// Note: The actual calculation is more complex in production
-func DefaultRewardConfig(foundationWallet common.Address) *RewardConfig {
-	// 5000 XDC = 5000 * 10^18 wei
-	blockReward := new(big.Int).Mul(big.NewInt(5000), big.NewInt(1e18))
-
-	return &RewardConfig{
-		BlockReward:       blockReward,
-		MasterPercent:     RewardMasterPercent,     // 90
-		VoterPercent:      RewardVoterPercent,      // 0
-		FoundationPercent: RewardFoundationPercent, // 10
-		FoundationWallet:  foundationWallet,
-	}
+// BlockReader provides access to block headers for reward calculation.
+// Full blocks are read directly from the database since Finalize receives
+// ChainHeaderReader which doesn't have GetBlock.
+type BlockReader interface {
+	consensus.ChainHeaderReader
 }
 
-// CalculateRewards calculates the rewards for masternodes at checkpoint blocks
-// This implements the XDC reward distribution mechanism:
-// - 90% to masternodes who signed blocks
-// - 10% to foundation wallet
-// - 0% to voters (handled separately by voter contract)
-func CalculateRewards(
-	chain consensus.ChainHeaderReader,
-	state *state.StateDB,
+// GetRewardForCheckpoint calculates the signing rewards for the checkpoint epoch.
+// It reads signing transactions from blocks to determine which masternodes signed which blocks.
+// The scan range is from block 1 to (checkpoint - 1), looking for signing txs that reference
+// the reward epoch blocks.
+func (c *XDPoS) GetRewardForCheckpoint(
+	chain BlockReader,
 	header *types.Header,
-	config *RewardConfig,
-	signers []common.Address,
-	signCount map[common.Address]int64,
+	rCheckpoint uint64,
+) (map[common.Address]*RewardLog, uint64, error) {
+	number := header.Number.Uint64()
+
+	// Match v2.6.8's formula:
+	// prevCheckpoint = number - (rCheckpoint * 2)
+	// startBlockNumber = prevCheckpoint + 1
+	// endBlockNumber = startBlockNumber + rCheckpoint - 1
+	// Scan blocks: (prevCheckpoint + rCheckpoint*2 - 1) down to startBlockNumber
+	
+	prevCheckpoint := number - (rCheckpoint * 2)
+	startBlockNumber := prevCheckpoint + 1
+	endBlockNumber := startBlockNumber + rCheckpoint - 1
+	scanEndBlock := number - 1 // Scan up to block before current checkpoint
+
+	// For block 1800: prevCheckpoint=0, start=1, end=900, scanEnd=1799
+	// For block 900: prevCheckpoint would be negative, skip
+	// Block 1800 is the FIRST reward checkpoint (rewards for epoch 0, blocks 1-900)
+	if number < rCheckpoint*2 {
+		log.Debug("Skipping rewards - before first reward checkpoint", "number", number)
+		return nil, 0, nil
+	}
+
+	signers := make(map[common.Address]*RewardLog)
+	var totalSigner uint64
+
+	// Get masternodes from the epoch's starting checkpoint (block prevCheckpoint)
+	epochCheckpoint := prevCheckpoint
+	if epochCheckpoint == 0 {
+		epochCheckpoint = 0
+	}
+	
+	epochHeader := chain.GetHeaderByNumber(epochCheckpoint)
+	if epochHeader == nil {
+		log.Warn("Failed to get epoch header for reward calculation", "number", epochCheckpoint)
+		return signers, totalSigner, nil
+	}
+
+	epoch := epochCheckpoint / rCheckpoint
+	masternodes := c.GetMasternodesFromCheckpointHeader(epochHeader, epochCheckpoint, epoch)
+	masternodeMap := make(map[common.Address]bool)
+	for _, mn := range masternodes {
+		masternodeMap[mn] = true
+	}
+
+	// Build block hash map for the reward epoch (blocks startBlockNumber to endBlockNumber)
+	blockHashMap := make(map[uint64]common.Hash)
+	for i := startBlockNumber; i <= endBlockNumber; i++ {
+		h := chain.GetHeaderByNumber(i)
+		if h != nil {
+			blockHashMap[i] = h.Hash()
+		}
+	}
+
+	// Collect signing data from ALL blocks up to checkpoint
+	// Map: blockHash -> list of signers who signed that block
+	blockSigners := make(map[common.Hash][]common.Address)
+
+	log.Info("Scanning blocks for signing transactions",
+		"from", scanEndBlock, "to", startBlockNumber, "rewardBlocks", endBlockNumber-startBlockNumber+1)
+
+	// Scan blocks from scanEndBlock down to startBlockNumber (matching v2.6.8)
+	txCount := 0
+	signingTxCount := 0
+	for i := scanEndBlock; i >= startBlockNumber; i-- {
+		blockHeader := chain.GetHeaderByNumber(i)
+		if blockHeader == nil {
+			continue
+		}
+		
+		// Read block directly from database since chain only provides headers
+		block := rawdb.ReadBlock(c.db, blockHeader.Hash(), i)
+		if block == nil {
+			log.Debug("Failed to get block for reward calculation", "number", i)
+			continue
+		}
+
+		// Find signing transactions in this block
+		txs := block.Transactions()
+		txCount += len(txs)
+		for _, tx := range txs {
+			if tx.IsSigningTransaction() {
+				signingTxCount++
+				// Extract the block hash being signed from tx data
+				// Format: methodId (4 bytes) + blockNumber (32 bytes) + blockHash (32 bytes)
+				data := tx.Data()
+				if len(data) >= 68 {
+					signedBlockHash := common.BytesToHash(data[len(data)-32:])
+					
+					// Get the sender of this signing tx
+					signer, err := types.Sender(types.LatestSignerForChainID(big.NewInt(50)), tx)
+					if err != nil {
+						log.Debug("Failed to get signing tx sender", "err", err)
+						continue
+					}
+					
+					// Only count if signer is a masternode
+					if masternodeMap[signer] {
+						blockSigners[signedBlockHash] = append(blockSigners[signedBlockHash], signer)
+					}
+				}
+			}
+		}
+	}
+	
+	log.Info("Scanned blocks for signing transactions",
+		"totalTxs", txCount, "signingTxs", signingTxCount, "blockSignerEntries", len(blockSigners))
+
+	// Count signatures per signer
+	for i := startBlockNumber; i <= endBlockNumber; i++ {
+		blockHeader := chain.GetHeaderByNumber(i)
+		if blockHeader == nil {
+			continue
+		}
+		
+		addrs := blockSigners[blockHeader.Hash()]
+		if len(addrs) > 0 {
+			// Track unique signers for this block
+			seen := make(map[common.Address]bool)
+			for _, addr := range addrs {
+				if !seen[addr] && masternodeMap[addr] {
+					seen[addr] = true
+					
+					if _, exists := signers[addr]; exists {
+						signers[addr].Sign++
+					} else {
+						signers[addr] = &RewardLog{Sign: 1, Reward: new(big.Int)}
+					}
+					totalSigner++
+				}
+			}
+		}
+	}
+
+	log.Info("Calculated signers for checkpoint",
+		"checkpoint", number,
+		"startBlock", startBlockNumber,
+		"endBlock", endBlockNumber,
+		"totalSigners", totalSigner,
+		"uniqueSigners", len(signers))
+
+	return signers, totalSigner, nil
+}
+
+// CalculateRewardForSigner calculates the reward amount for each signer
+// based on their signing activity.
+// Uses v2.6.8 calculation order: (chainReward / totalSigner) * sign
+func CalculateRewardForSigner(
+	chainReward *big.Int,
+	signers map[common.Address]*RewardLog,
+	totalSigner uint64,
+) map[common.Address]*big.Int {
+	resultSigners := make(map[common.Address]*big.Int)
+
+	if totalSigner == 0 {
+		return resultSigners
+	}
+
+	for signer, rLog := range signers {
+		// Match v2.6.8: divide first, then multiply
+		calcReward := new(big.Int).Set(chainReward)
+		calcReward.Div(calcReward, new(big.Int).SetUint64(totalSigner))
+		calcReward.Mul(calcReward, new(big.Int).SetUint64(rLog.Sign))
+		rLog.Reward = calcReward
+		resultSigners[signer] = calcReward
+	}
+
+	return resultSigners
+}
+
+// CalculateRewardForHolders distributes the signer's reward among the masternode owner and voters.
+// - Owner gets RewardMasterPercent (90%)
+// - Voters share RewardVoterPercent (0% currently)
+// - Foundation gets RewardFoundationPercent (10%) - handled separately
+func CalculateRewardForHolders(
+	foundationWallet common.Address,
+	statedb *state.StateDB,
+	signer common.Address,
+	calcReward *big.Int,
+	blockNumber uint64,
+) map[common.Address]*big.Int {
+	balances := make(map[common.Address]*big.Int)
+
+	if calcReward == nil || calcReward.Sign() <= 0 {
+		return balances
+	}
+
+	// Get the owner of this masternode
+	owner := state.GetCandidateOwner(statedb, signer)
+	if owner == (common.Address{}) {
+		owner = signer // Fallback to signer if no owner found
+	}
+
+	// Calculate owner portion (90% of the signer's reward)
+	rewardMaster := new(big.Int).Mul(calcReward, big.NewInt(RewardMasterPercent))
+	rewardMaster.Div(rewardMaster, big.NewInt(100))
+	balances[owner] = rewardMaster
+
+	// Voter rewards are 0% currently, infrastructure kept for future
+	if RewardVoterPercent > 0 {
+		voters := state.GetVoters(statedb, signer)
+		if len(voters) > 0 {
+			totalVoterReward := new(big.Int).Mul(calcReward, big.NewInt(RewardVoterPercent))
+			totalVoterReward.Div(totalVoterReward, big.NewInt(100))
+
+			totalCap := big.NewInt(0)
+			voterCaps := make(map[common.Address]*big.Int)
+
+			for _, voter := range voters {
+				if _, exists := voterCaps[voter]; exists {
+					continue
+				}
+				voterCap := state.GetVoterCap(statedb, signer, voter)
+				if voterCap.Sign() > 0 {
+					totalCap.Add(totalCap, voterCap)
+					voterCaps[voter] = voterCap
+				}
+			}
+
+			if totalCap.Sign() > 0 {
+				for voter, voterCap := range voterCaps {
+					reward := new(big.Int).Mul(totalVoterReward, voterCap)
+					reward.Div(reward, totalCap)
+
+					if balances[voter] != nil {
+						balances[voter].Add(balances[voter], reward)
+					} else {
+						balances[voter] = reward
+					}
+				}
+			}
+		}
+	}
+
+	return balances
+}
+
+// ApplyRewards distributes rewards at checkpoint blocks.
+func (c *XDPoS) ApplyRewards(
+	chain BlockReader,
+	statedb *state.StateDB,
+	parentState *state.StateDB,
+	header *types.Header,
 ) (map[string]interface{}, error) {
 	rewards := make(map[string]interface{})
 	number := header.Number.Uint64()
 
-	if config == nil || config.BlockReward == nil || config.BlockReward.Sign() <= 0 {
-		log.Debug("No reward configured", "number", number)
+	rCheckpoint := c.config.RewardCheckpoint
+	if rCheckpoint == 0 {
+		rCheckpoint = c.config.Epoch
+	}
+
+	foundationWallet := c.config.FoudationWalletAddr
+	if foundationWallet == (common.Address{}) {
+		log.Error("Foundation wallet address is empty")
 		return rewards, nil
 	}
 
-	// Calculate total signs in this epoch
-	var totalSigns int64
-	for _, count := range signCount {
-		totalSigns += count
-	}
-
-	if totalSigns == 0 {
-		log.Warn("No signatures found for reward calculation", "number", number)
+	// Only calculate rewards starting from second checkpoint
+	if number <= rCheckpoint {
+		log.Debug("Skipping rewards - at or before first checkpoint", "number", number)
 		return rewards, nil
 	}
 
-	// Calculate masternode portion (90%)
-	masternodeReward := new(big.Int).Mul(config.BlockReward, big.NewInt(config.MasterPercent))
-	masternodeReward.Div(masternodeReward, big.NewInt(100))
+	// Get the chain reward
+	chainReward := new(big.Int).Mul(
+		new(big.Int).SetUint64(c.config.Reward),
+		big.NewInt(1e18),
+	)
 
-	// Calculate foundation portion (10%)
-	foundationReward := new(big.Int).Mul(config.BlockReward, big.NewInt(config.FoundationPercent))
-	foundationReward.Div(foundationReward, big.NewInt(100))
+	// Get signers for this checkpoint
+	signers, totalSigner, err := c.GetRewardForCheckpoint(chain, header, rCheckpoint)
+	if err != nil {
+		log.Error("Failed to get reward checkpoint", "err", err)
+		return rewards, err
+	}
 
-	// Distribute rewards to masternodes based on their signing activity
-	masternodeRewards := make(map[common.Address]*big.Int)
+	if totalSigner == 0 {
+		log.Warn("No signers found for reward calculation", "number", number)
+		return rewards, nil
+	}
+
+	// Calculate rewards per signer
+	signerRewards := CalculateRewardForSigner(chainReward, signers, totalSigner)
+
+	// Use parentState for reading voter/owner info if available
+	readState := parentState
+	if readState == nil {
+		readState = statedb
+	}
+
+	// Only distribute rewards if there are signers
+	// Foundation reward is part of holder rewards in v2.6.8
+	voterResults := make(map[common.Address]interface{})
 	totalDistributed := big.NewInt(0)
 
-	for addr, count := range signCount {
-		if count > 0 {
-			// Reward proportional to number of blocks signed
-			reward := new(big.Int).Mul(masternodeReward, big.NewInt(count))
-			reward.Div(reward, big.NewInt(totalSigns))
+	// Foundation reward is accumulated per-signer to match v2.6.8's rounding behavior
+	totalFoundationReward := big.NewInt(0)
 
-			if reward.Sign() > 0 {
-				masternodeRewards[addr] = reward
-				totalDistributed.Add(totalDistributed, reward)
+	if len(signerRewards) > 0 {
+		for signer, signerReward := range signerRewards {
+			holderRewards := CalculateRewardForHolders(foundationWallet, readState, signer, signerReward, number)
 
-				// Add reward to state (convert big.Int to uint256.Int)
-				rewardU256, _ := uint256.FromBig(reward)
-				state.AddBalance(addr, rewardU256, tracing.BalanceIncreaseRewardMineBlock)
-				log.Debug("Masternode reward",
-					"address", addr.Hex(),
-					"reward", reward.String(),
-					"signs", count,
-					"block", number)
+			for holder, reward := range holderRewards {
+				if reward.Sign() > 0 {
+					log.Debug("Distributing holder reward",
+						"signer", signer.Hex(),
+						"holder", holder.Hex(),
+						"reward", reward.String())
+					rewardU256, _ := uint256.FromBig(reward)
+					statedb.AddBalance(holder, rewardU256, tracing.BalanceIncreaseRewardMineBlock)
+					totalDistributed.Add(totalDistributed, reward)
+				}
 			}
+			voterResults[signer] = holderRewards
+
+			// Calculate foundation reward per-signer (matching v2.6.8's rounding)
+			signerFoundationReward := new(big.Int).Mul(signerReward, big.NewInt(RewardFoundationPercent))
+			signerFoundationReward.Div(signerFoundationReward, big.NewInt(100))
+			totalFoundationReward.Add(totalFoundationReward, signerFoundationReward)
 		}
+
+		// Distribute accumulated foundation reward
+		if totalFoundationReward.Sign() > 0 {
+			log.Debug("Distributing foundation reward",
+				"foundation", foundationWallet.Hex(),
+				"reward", totalFoundationReward.String())
+			foundationU256, _ := uint256.FromBig(totalFoundationReward)
+			statedb.AddBalance(foundationWallet, foundationU256, tracing.BalanceIncreaseRewardMineBlock)
+			totalDistributed.Add(totalDistributed, totalFoundationReward)
+		}
+
+		log.Info("Rewards distributed",
+			"block", number,
+			"totalSigners", totalSigner,
+			"uniqueSigners", len(signers),
+			"totalDistributed", totalDistributed.String())
+	} else {
+		log.Debug("No signers found, skipping rewards", "block", number)
 	}
 
-	// Send foundation reward
-	if foundationReward.Sign() > 0 && config.FoundationWallet != (common.Address{}) {
-		foundationRewardU256, _ := uint256.FromBig(foundationReward)
-		state.AddBalance(config.FoundationWallet, foundationRewardU256, tracing.BalanceIncreaseRewardMineBlock)
-		log.Debug("Foundation reward",
-			"address", config.FoundationWallet.Hex(),
-			"reward", foundationReward.String(),
-			"block", number)
-	}
-
-	// Build rewards map for logging/storage
-	rewards["block"] = number
-	rewards["totalReward"] = config.BlockReward.String()
-	rewards["masternodeReward"] = masternodeReward.String()
-	rewards["foundationReward"] = foundationReward.String()
-	rewards["totalSigns"] = totalSigns
-
-	masternodeRewardStrings := make(map[string]string)
-	for addr, reward := range masternodeRewards {
-		masternodeRewardStrings[addr.Hex()] = reward.String()
-	}
-	rewards["masternodes"] = masternodeRewardStrings
-
-	log.Info("Rewards distributed",
-		"block", number,
-		"totalReward", config.BlockReward.String(),
-		"masternodes", len(masternodeRewards),
-		"foundation", foundationReward.String())
+	rewards["signers"] = signers
+	rewards["rewards"] = voterResults
+	rewards["totalDistributed"] = totalDistributed.String()
 
 	return rewards, nil
 }
 
-// CreateDefaultHookReward creates a default reward hook function
-// This can be used to set up the HookReward function in the XDPoS engine
+// CreateDefaultHookReward creates the reward hook function.
+// The hook receives ChainHeaderReader, and we read full blocks directly from the database.
 func (c *XDPoS) CreateDefaultHookReward() func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error) {
-	return func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error) {
-		number := header.Number.Uint64()
-		epoch := c.config.Epoch
-		rCheckpoint := c.config.RewardCheckpoint
-		if rCheckpoint == 0 {
-			rCheckpoint = epoch
-		}
-
-		// XDC reward calculation: rewards start from the second checkpoint
-		// At checkpoint 900: number=900, number-rCheckpoint=0, no rewards (first epoch)
-		// At checkpoint 1800: number=1800, number-rCheckpoint=900 > 0, rewards calculated
-		// prevCheckpoint = number - (rCheckpoint * 2)
-		if number <= rCheckpoint || number-rCheckpoint <= 0 {
-			log.Debug("Skipping rewards - first checkpoint", "number", number, "checkpoint", rCheckpoint)
-			return make(map[string]interface{}), nil
-		}
-
-		// Get the foundation wallet from config
-		foundationWallet := common.Address{}
-		if c.config.FoudationWalletAddr != (common.Address{}) {
-			foundationWallet = c.config.FoudationWalletAddr
-		}
-
-		rewardConfig := DefaultRewardConfig(foundationWallet)
-
-		// Get masternodes for this epoch
-		masternodes := c.GetMasternodes(chain, header)
-		if len(masternodes) == 0 {
-			log.Warn("No masternodes found for reward calculation", "number", number)
-			return make(map[string]interface{}), nil
-		}
-
-		// Calculate the previous checkpoint and block range for reward calculation
-		// XDC calculates rewards based on signatures from the previous epoch
-		prevCheckpoint := number - (rCheckpoint * 2)
-		startBlockNumber := prevCheckpoint + 1
-		endBlockNumber := startBlockNumber + rCheckpoint - 1
-
-		// Count signatures in the reward range
-		signCount := make(map[common.Address]int64)
-		for blockNum := startBlockNumber; blockNum <= endBlockNumber; blockNum++ {
-			blockHeader := chain.GetHeaderByNumber(blockNum)
-			if blockHeader != nil {
-				signer, err := c.RecoverSigner(blockHeader)
-				if err == nil {
-					signCount[signer]++
-				}
-			}
-		}
-
-		if len(signCount) == 0 {
-			log.Debug("No signatures found for reward calculation", "number", number, "start", startBlockNumber, "end", endBlockNumber)
-			return make(map[string]interface{}), nil
-		}
-
-		return CalculateRewards(chain, state, header, rewardConfig, masternodes, signCount)
+	return func(chain consensus.ChainHeaderReader, statedb *state.StateDB, header *types.Header) (map[string]interface{}, error) {
+		// BlockReader embeds ChainHeaderReader, so we can pass chain directly
+		return c.ApplyRewards(chain, statedb, nil, header)
 	}
 }
