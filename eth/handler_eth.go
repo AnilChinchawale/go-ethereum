@@ -20,9 +20,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
@@ -86,50 +88,26 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 
 	// XDC pre-merge block announcements and broadcasts
 	case *eth.NewBlockHashesPacket:
-		// XDC pre-merge: Log block hash announcements
-		// These indicate the peer has new blocks we might need
-		hashes := make([]string, len(*packet))
-		for i, ann := range *packet {
-			hashes[i] = fmt.Sprintf("%d:%s", ann.Number, ann.Hash.Hex()[:10])
+		// Mark the hashes as present at the remote peer
+		hashes := make([]common.Hash, len(*packet))
+		for i, block := range *packet {
+			hashes[i] = block.Hash
 		}
-		peer.Log().Debug("XDC block hashes announced", "count", len(*packet), "blocks", hashes)
-		// Update peer's head based on highest announced block
-		for _, ann := range *packet {
-			if ann.Number > 0 {
-				peer.SetHead(ann.Hash, nil)
+		// Trigger sync if we're behind
+		go func() {
+			if err := (*handler)(h).downloader.LegacySync(); err != nil {
+				log.Trace("Legacy sync from block hashes failed", "err", err)
 			}
-		}
+		}()
 		return nil
 
 	case *eth.NewBlockPacket:
-		// XDC pre-merge: Try to import broadcast blocks
-		block := packet.Block
-		peer.Log().Info("XDC block received", "number", block.NumberU64(), "hash", block.Hash().Hex()[:10])
-		// Update peer's head
-		peer.SetHead(block.Hash(), packet.TD)
-		// Try to insert the block (may fail if we don't have parent)
-		if _, err := h.chain.InsertChain([]*types.Block{block}); err != nil {
-			peer.Log().Debug("XDC block import failed", "number", block.NumberU64(), "err", err)
-			// This is expected when we're far behind - we need parent blocks first
-		}
-		return nil
-
-	// XDC legacy sync: headers arrived in response to our request
-	case *eth.BlockHeadersRequest:
-		headers := []*types.Header(*packet)
-		if len(headers) == 0 {
-			peer.Log().Debug("XDC: empty headers response")
-			return nil
-		}
-		peer.Log().Info("XDC sync: processing headers from legacy response", "count", len(headers))
-		
-		// For now, try to insert headers directly (will fail without bodies, but logs progress)
-		// A full implementation would store these and request bodies
-		for _, header := range headers {
-			peer.Log().Debug("XDC header received", "number", header.Number.Uint64(), "hash", header.Hash().Hex()[:10])
-		}
-		
-		// TODO: Store headers and request bodies for full sync
+		// A new block was broadcast - trigger sync to catch up
+		go func() {
+			if err := (*handler)(h).downloader.LegacySync(); err != nil {
+				log.Trace("Legacy sync from new block failed", "err", err)
+			}
+		}()
 		return nil
 
 	// XDPoS2 consensus messages - ignore for now (read-only sync mode)

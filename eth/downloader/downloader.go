@@ -427,6 +427,12 @@ func (d *Downloader) ConfigSyncMode() SyncMode {
 	return d.moder.get(false)
 }
 
+// LegacySync triggers a pre-merge style synchronization with the network.
+// This is used for XDC and other networks that don't use beacon chain consensus.
+func (d *Downloader) LegacySync() error {
+	return d.XDCSync()
+}
+
 // syncToHead starts a block synchronization based on the hash chain from
 // the specified head hash.
 func (d *Downloader) syncToHead() (err error) {

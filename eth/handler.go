@@ -448,6 +448,47 @@ func (h *handler) Start(maxPeers int) {
 	// start peer handler tracker
 	h.wg.Add(1)
 	go h.protoTracker()
+
+	// start legacy syncer for pre-merge networks (XDC)
+	h.wg.Add(1)
+	go h.legacySyncer()
+}
+
+// legacySyncer periodically synchronizes with the network for pre-merge networks like XDC.
+func (h *handler) legacySyncer() {
+	defer h.wg.Done()
+
+	// Initial sync after a short delay to let peers connect
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+
+	forceSync := make(chan struct{}, 1)
+	for {
+		select {
+		case <-timer.C:
+			// Periodic sync attempt
+			if h.peers.len() > 0 {
+				go h.doLegacySync()
+			}
+			timer.Reset(10 * time.Second)
+
+		case <-forceSync:
+			// Forced sync (e.g., from new block announcement)
+			if h.peers.len() > 0 {
+				go h.doLegacySync()
+			}
+
+		case <-h.quitSync:
+			return
+		}
+	}
+}
+
+// doLegacySync triggers a synchronization with the downloader.
+func (h *handler) doLegacySync() {
+	if err := h.downloader.LegacySync(); err != nil {
+		log.Debug("Legacy sync failed", "err", err)
+	}
 }
 
 func (h *handler) Stop() {

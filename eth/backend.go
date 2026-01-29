@@ -133,6 +133,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if !config.SyncMode.IsValid() {
 		return nil, fmt.Errorf("invalid sync mode %d", config.SyncMode)
 	}
+	// For pre-merge networks (XDC - no TerminalTotalDifficulty), force full sync
+	// as snap sync requires snap protocol support which XDC doesn't have
+	if config.Genesis != nil && config.Genesis.Config != nil && config.Genesis.Config.TerminalTotalDifficulty == nil {
+		if config.SyncMode != ethconfig.FullSync {
+			log.Info("Pre-merge network (XDC) detected, forcing full-sync mode")
+			config.SyncMode = ethconfig.FullSync
+		}
+	}
 	if !config.HistoryMode.IsValid() {
 		return nil, fmt.Errorf("invalid history mode %d", config.HistoryMode)
 	}
