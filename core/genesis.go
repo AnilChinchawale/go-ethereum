@@ -82,6 +82,8 @@ func (g *Genesis) copy() *Genesis {
 		if g.Config != nil {
 			conf := *g.Config
 			cpy.Config = &conf
+			// Normalize XDPoS config (handle both "xdpos" and "XDPoS" keys)
+			cpy.Config.NormalizeXDPoS()
 		}
 		return &cpy
 	}

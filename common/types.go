@@ -399,12 +399,28 @@ func (a Address) MarshalText() ([]byte, error) {
 }
 
 // UnmarshalText parses a hash in hex syntax.
+// Supports both "0x" and "xdc" prefixes for XDC Network compatibility.
 func (a *Address) UnmarshalText(input []byte) error {
+	// Convert xdc prefix to 0x for hexutil compatibility
+	inputStr := string(input)
+	if len(inputStr) >= 3 && (inputStr[0] == 'x' || inputStr[0] == 'X') && 
+		(inputStr[1] == 'd' || inputStr[1] == 'D') && (inputStr[2] == 'c' || inputStr[2] == 'C') {
+		input = []byte("0x" + inputStr[3:])
+	}
 	return hexutil.UnmarshalFixedText("Address", input, a[:])
 }
 
 // UnmarshalJSON parses a hash in hex syntax.
+// Supports both "0x" and "xdc" prefixes for XDC Network compatibility.
 func (a *Address) UnmarshalJSON(input []byte) error {
+	// Remove quotes and check for xdc prefix
+	if len(input) >= 2 && input[0] == '"' && input[len(input)-1] == '"' {
+		inputStr := string(input[1 : len(input)-1])
+		if len(inputStr) >= 3 && (inputStr[0] == 'x' || inputStr[0] == 'X') && 
+			(inputStr[1] == 'd' || inputStr[1] == 'D') && (inputStr[2] == 'c' || inputStr[2] == 'C') {
+			input = []byte("\"0x" + inputStr[3:] + "\"")
+		}
+	}
 	return hexutil.UnmarshalFixedJSON(addressT, input, a[:])
 }
 

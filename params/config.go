@@ -550,6 +550,7 @@ type ChainConfig struct {
 	Ethash             *EthashConfig       `json:"ethash,omitempty"`
 	Clique             *CliqueConfig       `json:"clique,omitempty"`
 	XDPoS              *XDPoSConfig        `json:"xdpos,omitempty"`
+	XDPoSAlt           *XDPoSConfig        `json:"XDPoS,omitempty"` // Alternate key for XDC mainnet genesis compatibility
 	BlobScheduleConfig *BlobScheduleConfig `json:"blobSchedule,omitempty"`
 }
 
@@ -595,6 +596,15 @@ type XDPoSV2Config struct {
 // String implements the stringer interface, returning the consensus engine details.
 func (c XDPoSConfig) String() string {
 	return fmt.Sprintf("xdpos(period: %d, epoch: %d, reward: %d)", c.Period, c.Epoch, c.Reward)
+}
+
+// NormalizeXDPoS merges XDPoSAlt into XDPoS for genesis compatibility.
+// XDC mainnet genesis uses "XDPoS" key while we use "xdpos".
+func (c *ChainConfig) NormalizeXDPoS() {
+	if c.XDPoS == nil && c.XDPoSAlt != nil {
+		c.XDPoS = c.XDPoSAlt
+		c.XDPoSAlt = nil
+	}
 }
 
 // String implements the fmt.Stringer interface, returning a string representation

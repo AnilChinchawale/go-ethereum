@@ -25,10 +25,12 @@ import (
 )
 
 // FromHex returns the bytes represented by the hexadecimal string s.
-// s may be prefixed with "0x".
+// s may be prefixed with "0x" or "xdc" (XDC Network format).
 func FromHex(s string) []byte {
 	if has0xPrefix(s) {
 		s = s[2:]
+	} else if hasXdcPrefix(s) {
+		s = s[3:]
 	}
 	if len(s)%2 == 1 {
 		s = "0" + s
@@ -50,6 +52,11 @@ func CopyBytes(b []byte) (copiedBytes []byte) {
 // has0xPrefix validates str begins with '0x' or '0X'.
 func has0xPrefix(str string) bool {
 	return len(str) >= 2 && str[0] == '0' && (str[1] == 'x' || str[1] == 'X')
+}
+
+// hasXdcPrefix validates str begins with 'xdc' or 'XDC' (XDC Network format).
+func hasXdcPrefix(str string) bool {
+	return len(str) >= 3 && (str[0] == 'x' || str[0] == 'X') && (str[1] == 'd' || str[1] == 'D') && (str[2] == 'c' || str[2] == 'C')
 }
 
 // isHexCharacter returns bool of c being a valid hexadecimal.
