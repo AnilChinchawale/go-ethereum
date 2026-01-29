@@ -220,7 +220,10 @@ func CreateConsensusEngine(config *params.ChainConfig, db ethdb.Database) (conse
 	// XDPoS consensus for XDC Network (chain IDs 50 and 51)
 	if config.XDPoS != nil {
 		log.Info("Creating XDPoS consensus engine", "chainID", config.ChainID)
-		return XDPoS.New(config.XDPoS, db), nil
+		engine := XDPoS.New(config.XDPoS, db)
+		// Set up the default reward hook
+		engine.HookReward = engine.CreateDefaultHookReward()
+		return engine, nil
 	}
 	
 	if config.TerminalTotalDifficulty == nil {

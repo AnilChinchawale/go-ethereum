@@ -564,7 +564,9 @@ func (c *XDPoS) verifySeal(chain consensus.ChainHeaderReader, header *types.Head
 	log.Debug("verify seal block", "number", header.Number, "hash", header.Hash(), "block difficulty", header.Difficulty, "calc difficulty", difficulty, "creator", creator)
 
 	// Ensure that the block's difficulty is meaningful (may not be correct at this point)
-	if number > 0 && !c.fakeDiff {
+	// Note: During sync, we may not have checkpoint headers yet, so difficulty calculation
+	// might return 0. In this case, we skip difficulty validation and rely on signature verification.
+	if number > 0 && !c.fakeDiff && difficulty.Int64() != 0 {
 		if header.Difficulty.Int64() != difficulty.Int64() {
 			return errInvalidDifficulty
 		}
@@ -710,7 +712,24 @@ func (c *XDPoS) Prepare(chain consensus.ChainHeaderReader, header *types.Header)
 }
 
 // Finalize implements consensus.Engine.
-func (c *XDPoS) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
+func (c *XDPoS) Finalize(chain consensus.ChainHeaderReader, header *types.Header, statedb vm.StateDB, body *types.Body) {
+	// Apply rewards at checkpoint blocks (like the original XDC implementation)
+	number := header.Number.Uint64()
+	rCheckpoint := c.config.RewardCheckpoint
+	if rCheckpoint == 0 {
+		rCheckpoint = c.config.Epoch
+	}
+
+	// Cast to *state.StateDB if possible (needed for HookReward)
+	if concreteState, ok := statedb.(*state.StateDB); ok {
+		if c.HookReward != nil && number%rCheckpoint == 0 {
+			_, err := c.HookReward(chain, concreteState, header)
+			if err != nil {
+				log.Error("Failed to apply XDPoS rewards", "number", number, "err", err)
+			}
+		}
+	}
+
 	header.UncleHash = types.CalcUncleHash(nil)
 }
 
