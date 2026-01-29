@@ -18,7 +18,6 @@ package eth
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -35,13 +34,32 @@ import (
 var requestTracker = tracker.New(ProtocolName, 5*time.Minute)
 
 func handleGetBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
-	// Decode the complex header query
-	var query GetBlockHeadersPacket
-	if err := msg.Decode(&query); err != nil {
+	// Check protocol version to determine message format
+	// eth/66+ uses RequestId wrapper, but XDC's eth/100 (XDPOS2) uses eth/63 style messages
+	// eth/62, eth/63, and XDPOS2 (100) all use legacy format without RequestId
+	version := peer.Version()
+	useLegacyFormat := version == ETH62 || version == ETH63 || version == XDPOS2
+	
+	if !useLegacyFormat && version >= ETH66 {
+		// Modern eth/66+ format with RequestId
+		var query GetBlockHeadersPacket
+		if err := msg.Decode(&query); err != nil {
+			return err
+		}
+		response := ServiceGetBlockHeadersQuery(backend.Chain(), query.GetBlockHeadersRequest, peer)
+		return peer.ReplyBlockHeadersRLP(query.RequestId, response)
+	}
+	
+	// Legacy format (eth/63, eth/62, XDC eth/100) - no RequestId wrapper
+	var legacyQuery GetBlockHeadersRequest
+	if err := msg.Decode(&legacyQuery); err != nil {
+		log.Debug("Legacy GetBlockHeaders decode failed", "version", version, "err", err)
 		return err
 	}
-	response := ServiceGetBlockHeadersQuery(backend.Chain(), query.GetBlockHeadersRequest, peer)
-	return peer.ReplyBlockHeadersRLP(query.RequestId, response)
+	log.Debug("Using legacy GetBlockHeaders format", "version", version)
+	response := ServiceGetBlockHeadersQuery(backend.Chain(), &legacyQuery, peer)
+	// For legacy protocols, send response without RequestId
+	return peer.ReplyBlockHeadersRLPLegacy(response)
 }
 
 // ServiceGetBlockHeadersQuery assembles the response to a header query. It is
@@ -218,13 +236,29 @@ func serviceContiguousBlockHeaderQuery(chain *core.BlockChain, query *GetBlockHe
 }
 
 func handleGetBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
-	// Decode the block body retrieval message
-	var query GetBlockBodiesPacket
-	if err := msg.Decode(&query); err != nil {
+	// Check protocol version to determine message format
+	version := peer.Version()
+	useLegacyFormat := version == ETH62 || version == ETH63 || version == XDPOS2
+	
+	if !useLegacyFormat && version >= ETH66 {
+		// Modern eth/66+ format with RequestId
+		var query GetBlockBodiesPacket
+		if err := msg.Decode(&query); err != nil {
+			return err
+		}
+		response := ServiceGetBlockBodiesQuery(backend.Chain(), query.GetBlockBodiesRequest)
+		return peer.ReplyBlockBodiesRLP(query.RequestId, response)
+	}
+	
+	// Legacy format (eth/63, eth/62, XDC eth/100) - no RequestId wrapper
+	var legacyQuery GetBlockBodiesRequest
+	if err := msg.Decode(&legacyQuery); err != nil {
+		log.Debug("Legacy GetBlockBodies decode failed", "version", version, "err", err)
 		return err
 	}
-	response := ServiceGetBlockBodiesQuery(backend.Chain(), query.GetBlockBodiesRequest)
-	return peer.ReplyBlockBodiesRLP(query.RequestId, response)
+	log.Debug("Using legacy GetBlockBodies format", "version", version)
+	response := ServiceGetBlockBodiesQuery(backend.Chain(), legacyQuery)
+	return peer.ReplyBlockBodiesRLPLegacy(response)
 }
 
 // ServiceGetBlockBodiesQuery assembles the response to a body query. It is
@@ -343,60 +377,111 @@ func serviceGetReceiptsQuery69(chain *core.BlockChain, query GetReceiptsRequest)
 }
 
 func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
-	return errors.New("block announcements disallowed") // We dropped support for non-merge networks
+	// XDC is a pre-merge network, accept block announcements
+	ann := new(NewBlockHashesPacket)
+	if err := msg.Decode(ann); err != nil {
+		return fmt.Errorf("failed to decode NewBlockHashesPacket: %v", err)
+	}
+	return backend.Handle(peer, ann)
 }
 
 func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
-	return errors.New("block broadcasts disallowed") // We dropped support for non-merge networks
+	// XDC is a pre-merge network, accept block broadcasts
+	ann := new(NewBlockPacket)
+	if err := msg.Decode(ann); err != nil {
+		return fmt.Errorf("failed to decode NewBlockPacket: %v", err)
+	}
+	if ann.Block == nil {
+		return fmt.Errorf("nil block in NewBlockPacket")
+	}
+	ann.Block.ReceivedAt = msg.Time()
+	ann.Block.ReceivedFrom = peer
+	return backend.Handle(peer, ann)
 }
 
 func handleBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
 	// A batch of headers arrived to one of our previous requests
-	res := new(BlockHeadersPacket)
-	if err := msg.Decode(res); err != nil {
+	version := peer.Version()
+	useLegacyFormat := version == ETH62 || version == ETH63 || version == XDPOS2
+	
+	if !useLegacyFormat && version >= ETH66 {
+		// Modern eth/66+ format with RequestId
+		res := new(BlockHeadersPacket)
+		if err := msg.Decode(res); err != nil {
+			return err
+		}
+		metadata := func() interface{} {
+			hashes := make([]common.Hash, len(res.BlockHeadersRequest))
+			for i, header := range res.BlockHeadersRequest {
+				hashes[i] = header.Hash()
+			}
+			return hashes
+		}
+		return peer.dispatchResponse(&Response{
+			id:   res.RequestId,
+			code: BlockHeadersMsg,
+			Res:  &res.BlockHeadersRequest,
+		}, metadata)
+	}
+	
+	// Legacy format (eth/63, eth/62, XDC eth/100) - no RequestId wrapper
+	var legacyRes BlockHeadersRequest
+	if err := msg.Decode(&legacyRes); err != nil {
+		log.Debug("Legacy BlockHeaders decode failed", "version", version, "err", err)
 		return err
 	}
-	metadata := func() interface{} {
-		hashes := make([]common.Hash, len(res.BlockHeadersRequest))
-		for i, header := range res.BlockHeadersRequest {
-			hashes[i] = header.Hash()
-		}
-		return hashes
-	}
-	return peer.dispatchResponse(&Response{
-		id:   res.RequestId,
-		code: BlockHeadersMsg,
-		Res:  &res.BlockHeadersRequest,
-	}, metadata)
+	log.Info("XDC: received legacy BlockHeaders", "version", version, "count", len(legacyRes))
+	
+	// For XDC legacy sync, pass headers directly to backend for processing
+	// instead of using dispatcher (which expects RequestId matching)
+	return backend.Handle(peer, &legacyRes)
 }
 
 func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 	// A batch of block bodies arrived to one of our previous requests
-	res := new(BlockBodiesPacket)
-	if err := msg.Decode(res); err != nil {
+	version := peer.Version()
+	useLegacyFormat := version == ETH62 || version == ETH63 || version == XDPOS2
+	
+	if !useLegacyFormat && version >= ETH66 {
+		// Modern eth/66+ format with RequestId
+		res := new(BlockBodiesPacket)
+		if err := msg.Decode(res); err != nil {
+			return err
+		}
+		metadata := func() interface{} {
+			var (
+				txsHashes        = make([]common.Hash, len(res.BlockBodiesResponse))
+				uncleHashes      = make([]common.Hash, len(res.BlockBodiesResponse))
+				withdrawalHashes = make([]common.Hash, len(res.BlockBodiesResponse))
+			)
+			hasher := trie.NewStackTrie(nil)
+			for i, body := range res.BlockBodiesResponse {
+				txsHashes[i] = types.DeriveSha(types.Transactions(body.Transactions), hasher)
+				uncleHashes[i] = types.CalcUncleHash(body.Uncles)
+				if body.Withdrawals != nil {
+					withdrawalHashes[i] = types.DeriveSha(types.Withdrawals(body.Withdrawals), hasher)
+				}
+			}
+			return [][]common.Hash{txsHashes, uncleHashes, withdrawalHashes}
+		}
+		return peer.dispatchResponse(&Response{
+			id:   res.RequestId,
+			code: BlockBodiesMsg,
+			Res:  &res.BlockBodiesResponse,
+		}, metadata)
+	}
+	
+	// Legacy format (eth/63, eth/62, XDC eth/100) - no RequestId wrapper
+	var legacyRes BlockBodiesResponse
+	if err := msg.Decode(&legacyRes); err != nil {
+		log.Debug("Legacy BlockBodies decode failed", "version", version, "err", err)
 		return err
 	}
-	metadata := func() interface{} {
-		var (
-			txsHashes        = make([]common.Hash, len(res.BlockBodiesResponse))
-			uncleHashes      = make([]common.Hash, len(res.BlockBodiesResponse))
-			withdrawalHashes = make([]common.Hash, len(res.BlockBodiesResponse))
-		)
-		hasher := trie.NewStackTrie(nil)
-		for i, body := range res.BlockBodiesResponse {
-			txsHashes[i] = types.DeriveSha(types.Transactions(body.Transactions), hasher)
-			uncleHashes[i] = types.CalcUncleHash(body.Uncles)
-			if body.Withdrawals != nil {
-				withdrawalHashes[i] = types.DeriveSha(types.Withdrawals(body.Withdrawals), hasher)
-			}
-		}
-		return [][]common.Hash{txsHashes, uncleHashes, withdrawalHashes}
-	}
-	return peer.dispatchResponse(&Response{
-		id:   res.RequestId,
-		code: BlockBodiesMsg,
-		Res:  &res.BlockBodiesResponse,
-	}, metadata)
+	log.Debug("Using legacy BlockBodies format", "version", version)
+	
+	// For XDC legacy sync, pass bodies directly to backend for processing
+	// instead of using dispatcher (which expects RequestId matching)
+	return backend.Handle(peer, &legacyRes)
 }
 
 func handleReceipts[L ReceiptsList](backend Backend, msg Decoder, peer *Peer) error {
@@ -551,4 +636,58 @@ func handleBlockRangeUpdate(backend Backend, msg Decoder, peer *Peer) error {
 	// We don't do anything with these messages for now, just store them on the peer.
 	peer.lastRange.Store(&update)
 	return nil
+}
+
+// handleGetNodeData handles eth/63 GetNodeData messages (state trie nodes)
+func handleGetNodeData(backend Backend, msg Decoder, peer *Peer) error {
+	// Decode the request
+	var hashes []common.Hash
+	if err := msg.Decode(&hashes); err != nil {
+		return fmt.Errorf("failed to decode GetNodeData: %v", err)
+	}
+	// For now, return empty response - full implementation needs state trie access
+	return peer.SendNodeData([][]byte{})
+}
+
+// handleNodeData handles eth/63 NodeData response messages
+func handleNodeData(backend Backend, msg Decoder, peer *Peer) error {
+	// Decode the response
+	var data [][]byte
+	if err := msg.Decode(&data); err != nil {
+		return fmt.Errorf("failed to decode NodeData: %v", err)
+	}
+	// Process node data through the downloader
+	return backend.Handle(peer, &NodeDataPacket{Data: data})
+}
+
+// XDPoS2 consensus message handlers
+
+// handleVoteMsg handles XDPoS2 vote messages
+func handleVoteMsg(backend Backend, msg Decoder, peer *Peer) error {
+	// XDC sends Vote as raw RLP, decode as RawValue to preserve bytes
+	var rawVote rlp.RawValue
+	if err := msg.Decode(&rawVote); err != nil {
+		return fmt.Errorf("failed to decode VoteMsg: %v", err)
+	}
+	return backend.Handle(peer, &VotePacket{Vote: rawVote})
+}
+
+// handleTimeoutMsg handles XDPoS2 timeout messages
+func handleTimeoutMsg(backend Backend, msg Decoder, peer *Peer) error {
+	// XDC sends Timeout as raw RLP
+	var rawTimeout rlp.RawValue
+	if err := msg.Decode(&rawTimeout); err != nil {
+		return fmt.Errorf("failed to decode TimeoutMsg: %v", err)
+	}
+	return backend.Handle(peer, &TimeoutPacket{Timeout: rawTimeout})
+}
+
+// handleSyncInfoMsg handles XDPoS2 sync info messages
+func handleSyncInfoMsg(backend Backend, msg Decoder, peer *Peer) error {
+	// XDC sends SyncInfo as raw RLP
+	var rawSyncInfo rlp.RawValue
+	if err := msg.Decode(&rawSyncInfo); err != nil {
+		return fmt.Errorf("failed to decode SyncInfoMsg: %v", err)
+	}
+	return backend.Handle(peer, &SyncInfoPacket{SyncInfo: rawSyncInfo})
 }

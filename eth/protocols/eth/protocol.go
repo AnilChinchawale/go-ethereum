@@ -30,8 +30,12 @@ import (
 
 // Constants to match up protocol versions and messages
 const (
-	ETH68 = 68
-	ETH69 = 69
+	ETH62  = 62  // XDC compatible
+	ETH63  = 63  // XDC compatible
+	ETH66  = 66  // eth/66: introduced RequestId wrapping
+	ETH68  = 68
+	ETH69  = 69
+	XDPOS2 = 100 // XDC custom protocol (uses eth/63 style messages)
 )
 
 // ProtocolName is the official short name of the `eth` protocol used during
@@ -39,31 +43,56 @@ const (
 const ProtocolName = "eth"
 
 // ProtocolVersions are the supported versions of the `eth` protocol (first
-// is primary).
-var ProtocolVersions = []uint{ETH69, ETH68}
+// is primary). XDC uses eth/62, eth/63, and xdpos2/100.
+// XDC only supports xdpos2, eth63, eth62 - do not advertise eth68/69
+var ProtocolVersions = []uint{XDPOS2, ETH63, ETH62}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{ETH68: 17, ETH69: 18}
+var protocolLengths = map[uint]uint64{
+	ETH62:  8,   // eth/62: basic messages
+	ETH63:  17,  // eth/63: adds state sync messages
+	ETH68:  17,  // eth/68: modern ethereum
+	ETH69:  18,  // eth/69: latest ethereum
+	XDPOS2: 227, // xdpos2: XDC consensus messages
+}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
 
 const (
-	StatusMsg                     = 0x00
-	NewBlockHashesMsg             = 0x01
-	TransactionsMsg               = 0x02
-	GetBlockHeadersMsg            = 0x03
-	BlockHeadersMsg               = 0x04
-	GetBlockBodiesMsg             = 0x05
-	BlockBodiesMsg                = 0x06
-	NewBlockMsg                   = 0x07
-	NewPooledTransactionHashesMsg = 0x08
-	GetPooledTransactionsMsg      = 0x09
+	// Protocol messages belonging to eth/62
+	StatusMsg         = 0x00
+	NewBlockHashesMsg = 0x01
+	TransactionsMsg   = 0x02
+	GetBlockHeadersMsg = 0x03
+	BlockHeadersMsg    = 0x04
+	GetBlockBodiesMsg  = 0x05
+	BlockBodiesMsg     = 0x06
+	NewBlockMsg        = 0x07
+
+	// XDC-specific messages (eth/62 extended)
+	OrderTxMsg   = 0x08 // XDC order transactions
+	LendingTxMsg = 0x09 // XDC lending transactions
+
+	// eth/68+ messages (pooled transactions)
+	NewPooledTransactionHashesMsg = 0x08 // Same as OrderTxMsg - version dependent
+	GetPooledTransactionsMsg      = 0x09 // Same as LendingTxMsg - version dependent
 	PooledTransactionsMsg         = 0x0a
-	GetReceiptsMsg                = 0x0f
-	ReceiptsMsg                   = 0x10
-	BlockRangeUpdateMsg           = 0x11
+
+	// Protocol messages belonging to eth/63
+	GetNodeDataMsg = 0x0d
+	NodeDataMsg    = 0x0e
+	GetReceiptsMsg = 0x0f
+	ReceiptsMsg    = 0x10
+
+	// eth/69 messages
+	BlockRangeUpdateMsg = 0x11
+
+	// XDPoS2 consensus messages (xdpos2/100)
+	VoteMsg     = 0xe0
+	TimeoutMsg  = 0xe1
+	SyncInfoMsg = 0xe2
 )
 
 var (
@@ -82,6 +111,16 @@ var (
 type Packet interface {
 	Name() string // Name returns a string corresponding to the message type.
 	Kind() byte   // Kind returns the message type.
+}
+
+// StatusPacket62 is the network packet for the status message in eth/62 and eth/63.
+// XDC uses this format without ForkID.
+type StatusPacket62 struct {
+	ProtocolVersion uint32
+	NetworkID       uint64
+	TD              *big.Int
+	Head            common.Hash
+	Genesis         common.Hash
 }
 
 // StatusPacket is the network packet for the status message.
@@ -334,6 +373,9 @@ type BlockRangeUpdatePacket struct {
 	LatestBlockHash common.Hash
 }
 
+func (*StatusPacket62) Name() string { return "Status" }
+func (*StatusPacket62) Kind() byte   { return StatusMsg }
+
 func (*StatusPacket68) Name() string { return "Status" }
 func (*StatusPacket68) Kind() byte   { return StatusMsg }
 
@@ -381,3 +423,33 @@ func (*ReceiptsRLPResponse) Kind() byte   { return ReceiptsMsg }
 
 func (*BlockRangeUpdatePacket) Name() string { return "BlockRangeUpdate" }
 func (*BlockRangeUpdatePacket) Kind() byte   { return BlockRangeUpdateMsg }
+
+// eth/63 NodeData packets
+type NodeDataPacket struct {
+	Data [][]byte
+}
+
+func (*NodeDataPacket) Name() string { return "NodeData" }
+func (*NodeDataPacket) Kind() byte   { return NodeDataMsg }
+
+// XDPoS2 consensus packets
+type VotePacket struct {
+	Vote []byte
+}
+
+func (*VotePacket) Name() string { return "Vote" }
+func (*VotePacket) Kind() byte   { return VoteMsg }
+
+type TimeoutPacket struct {
+	Timeout []byte
+}
+
+func (*TimeoutPacket) Name() string { return "Timeout" }
+func (*TimeoutPacket) Kind() byte   { return TimeoutMsg }
+
+type SyncInfoPacket struct {
+	SyncInfo []byte
+}
+
+func (*SyncInfoPacket) Name() string { return "SyncInfo" }
+func (*SyncInfoPacket) Kind() byte   { return SyncInfoMsg }

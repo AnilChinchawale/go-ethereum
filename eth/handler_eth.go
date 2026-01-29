@@ -84,6 +84,75 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		}
 		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
 
+	// XDC pre-merge block announcements and broadcasts
+	case *eth.NewBlockHashesPacket:
+		// XDC pre-merge: Log block hash announcements
+		// These indicate the peer has new blocks we might need
+		hashes := make([]string, len(*packet))
+		for i, ann := range *packet {
+			hashes[i] = fmt.Sprintf("%d:%s", ann.Number, ann.Hash.Hex()[:10])
+		}
+		peer.Log().Debug("XDC block hashes announced", "count", len(*packet), "blocks", hashes)
+		// Update peer's head based on highest announced block
+		for _, ann := range *packet {
+			if ann.Number > 0 {
+				peer.SetHead(ann.Hash, nil)
+			}
+		}
+		return nil
+
+	case *eth.NewBlockPacket:
+		// XDC pre-merge: Try to import broadcast blocks
+		block := packet.Block
+		peer.Log().Info("XDC block received", "number", block.NumberU64(), "hash", block.Hash().Hex()[:10])
+		// Update peer's head
+		peer.SetHead(block.Hash(), packet.TD)
+		// Try to insert the block (may fail if we don't have parent)
+		if _, err := h.chain.InsertChain([]*types.Block{block}); err != nil {
+			peer.Log().Debug("XDC block import failed", "number", block.NumberU64(), "err", err)
+			// This is expected when we're far behind - we need parent blocks first
+		}
+		return nil
+
+	// XDC legacy sync: headers arrived in response to our request
+	case *eth.BlockHeadersRequest:
+		headers := []*types.Header(*packet)
+		if len(headers) == 0 {
+			peer.Log().Debug("XDC: empty headers response")
+			return nil
+		}
+		peer.Log().Info("XDC sync: received headers from legacy response", "count", len(headers), "first", headers[0].Number.Uint64())
+		
+		// Deliver headers to the XDC downloader
+		(*handler)(h).downloader.DeliverHeadersXDC(peer.ID(), headers)
+		return nil
+
+	// XDC legacy sync: bodies arrived in response to our request
+	case *eth.BlockBodiesResponse:
+		txs, uncles, _ := packet.Unpack()
+		if len(txs) == 0 {
+			peer.Log().Debug("XDC: empty bodies response")
+			return nil
+		}
+		peer.Log().Info("XDC sync: received bodies from legacy response", "count", len(txs))
+		
+		// Deliver bodies to the XDC downloader
+		(*handler)(h).downloader.DeliverBodiesXDC(peer.ID(), txs, uncles)
+		return nil
+
+	// XDPoS2 consensus messages - ignore for now (read-only sync mode)
+	case *eth.VotePacket:
+		// TODO: Forward to XDPoS consensus engine when implemented
+		return nil
+
+	case *eth.TimeoutPacket:
+		// TODO: Forward to XDPoS consensus engine when implemented
+		return nil
+
+	case *eth.SyncInfoPacket:
+		// TODO: Forward to XDPoS consensus engine when implemented
+		return nil
+
 	default:
 		return fmt.Errorf("unexpected eth packet type: %T", packet)
 	}

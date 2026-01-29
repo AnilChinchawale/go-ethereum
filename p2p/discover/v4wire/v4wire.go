@@ -41,9 +41,16 @@ const (
 	PongPacket
 	FindnodePacket
 	NeighborsPacket
-	ENRRequestPacket
-	ENRResponsePacket
+	ENRRequestPacket  // = 5, XDC uses this slot for PingXDC
+	ENRResponsePacket // = 6
 )
+
+// XDC uses packet type 5 for ping instead of type 1.
+// When UseXDCPing is true:
+// - Outgoing pings use type 5 (ENRRequestPacket slot)
+// - Incoming type 5 packets are decoded as Ping (not ENRRequest)
+// XDC mainnet nodes only understand pingXDC (type 5).
+var UseXDCPing = true
 
 // RPC request structures
 type (
@@ -169,8 +176,19 @@ type Packet interface {
 	Kind() byte
 }
 
-func (req *Ping) Name() string { return "PING/v4" }
-func (req *Ping) Kind() byte   { return PingPacket }
+func (req *Ping) Name() string {
+	if UseXDCPing {
+		return "PING XDC/v4"
+	}
+	return "PING/v4"
+}
+func (req *Ping) Kind() byte {
+	if UseXDCPing {
+		// XDC uses packet type 5 for ping
+		return ENRRequestPacket
+	}
+	return PingPacket
+}
 
 func (req *Pong) Name() string { return "PONG/v4" }
 func (req *Pong) Kind() byte   { return PongPacket }
@@ -233,8 +251,13 @@ func Decode(input []byte) (Packet, Pubkey, []byte, error) {
 		req = new(Findnode)
 	case NeighborsPacket:
 		req = new(Neighbors)
-	case ENRRequestPacket:
-		req = new(ENRRequest)
+	case ENRRequestPacket: // Also PingXDCPacket (5) - XDC uses this for ping
+		// XDC uses packet type 5 for ping, so try to decode as Ping first
+		if UseXDCPing {
+			req = new(Ping)
+		} else {
+			req = new(ENRRequest)
+		}
 	case ENRResponsePacket:
 		req = new(ENRResponse)
 	default:
