@@ -163,27 +163,22 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	}
 	// Validate the state root against the received state root and throw
 	// an error if they don't match.
-	// XDPoS note: At checkpoint blocks, state root may differ due to reward application
-	// which we cannot accurately replicate without smart contract state. Trust the downloaded root.
 	root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number))
 	if header.Root != root {
-		// Check if this is an XDPoS checkpoint block - be more lenient during sync
-		isCheckpoint := false
+		// Log details for debugging XDPoS reward state
 		if v.config.XDPoS != nil {
 			epoch := v.config.XDPoS.Epoch
 			if epoch == 0 {
 				epoch = 900
 			}
-			isCheckpoint = header.Number.Uint64()%epoch == 0 && header.Number.Uint64() > 0
+			isCheckpoint := header.Number.Uint64()%epoch == 0 && header.Number.Uint64() > 0
+			log.Warn("State root mismatch", 
+				"number", header.Number,
+				"expected", header.Root,
+				"computed", root,
+				"isCheckpoint", isCheckpoint)
 		}
-		if isCheckpoint {
-			// Force the state to match expected root for checkpoint blocks during sync
-			// This is safe because checkpoint headers are validated separately
-			log.Warn("XDPoS checkpoint state root mismatch (accepting downloaded root)", 
-				"number", header.Number, "remote", header.Root, "local", root)
-		} else {
-			return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
-		}
+		return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
 	}
 	return nil
 }
