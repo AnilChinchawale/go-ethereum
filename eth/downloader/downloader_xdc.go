@@ -187,6 +187,19 @@ func (d *Downloader) syncWithPeerXDC(p *peerConnection, hash common.Hash, td *bi
 	}
 	log.Info("XDC sync: common ancestor found", "number", origin)
 
+	// For XDPoS: adjust origin to include the most recent checkpoint
+	// This ensures we have masternode lists for validating subsequent blocks
+	// XDC uses 900 block epochs
+	const xdposEpoch = uint64(900)
+	if origin > xdposEpoch {
+		// Find the checkpoint at or before origin
+		checkpoint := origin - (origin % xdposEpoch)
+		if checkpoint > 0 && checkpoint < origin {
+			log.Info("XDC sync: adjusting origin to include checkpoint", "original", origin, "checkpoint", checkpoint)
+			origin = checkpoint
+		}
+	}
+
 	// Update sync stats
 	d.syncStatsLock.Lock()
 	if d.syncStatsChainHeight <= origin || d.syncStatsChainOrigin > origin {
@@ -309,11 +322,23 @@ func (d *Downloader) requestHeadersByNumberXDC(p *peerConnection, from uint64, c
 				}
 				continue
 			}
-			// Verify we got the expected response (approximate check)
-			if len(resp.headers) > 0 && count == 1 && len(resp.headers) != 1 {
-				// Got response from a different request, skip it
-				log.Debug("XDC sync: skipping mismatched header response", "expected", count, "got", len(resp.headers))
-				continue
+			// Match by first header number (most reliable)
+			if len(resp.headers) > 0 {
+				firstNum := resp.headers[0].Number.Uint64()
+				// For binary search (count=1), check exact match
+				if count == 1 && firstNum != from {
+					log.Debug("XDC sync: skipping response (wrong first header)", "expected", from, "got", firstNum)
+					continue
+				}
+				// For span search, check approximate match
+				if count > 1 && len(resp.headers) != count {
+					// Different count - might be from different request
+					// But accept if first header matches our range
+					if firstNum < from || firstNum > from+uint64(count*skip) {
+						log.Debug("XDC sync: skipping response (out of range)", "from", from, "firstNum", firstNum)
+						continue
+					}
+				}
 			}
 			return resp.headers, nil
 
