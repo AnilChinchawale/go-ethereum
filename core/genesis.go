@@ -82,6 +82,8 @@ func (g *Genesis) copy() *Genesis {
 		if g.Config != nil {
 			conf := *g.Config
 			cpy.Config = &conf
+			// Normalize XDPoS config (handle both "xdpos" and "XDPoS" keys)
+			cpy.Config.NormalizeXDPoS()
 		}
 		return &cpy
 	}
@@ -497,6 +499,10 @@ func (g *Genesis) toBlockWithRoot(root common.Hash) *types.Block {
 		MixDigest:  g.Mixhash,
 		Coinbase:   g.Coinbase,
 		Root:       root,
+		// XDPoS fields - initialize to empty slices (not nil) for RLP compatibility
+		Validators: []byte{},
+		Validator:  []byte{},
+		Penalties:  []byte{},
 	}
 	if g.GasLimit == 0 {
 		head.GasLimit = params.GenesisGasLimit
