@@ -58,6 +58,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/dnsdisc"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/rlpx"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -202,6 +203,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// Set NetworkID on P2P server for chain-specific discovery (e.g., XDC uses pingXDC)
 	p2pServer.Config.NetworkID = networkID
+
+	// Enable pre-EIP-8 handshake for XDC mainnet (chainID 50) and testnet (51)
+	if networkID == 50 || networkID == 51 {
+		rlpx.UsePreEIP8 = true
+		log.Info("Enabled pre-EIP-8 handshake for XDC compatibility", "networkID", networkID)
+	}
 
 	eth := &Ethereum{
 		config:          config,

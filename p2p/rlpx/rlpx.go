@@ -553,7 +553,14 @@ func (h *handshakeState) runInitiator(conn io.ReadWriter, prv *ecdsa.PrivateKey,
 	if err != nil {
 		return s, err
 	}
-	authPacket, err := h.sealEIP8(authMsg)
+
+	// Use pre-EIP-8 format for XDC compatibility
+	var authPacket []byte
+	if UsePreEIP8 {
+		authPacket, err = h.sealPlain(authMsg)
+	} else {
+		authPacket, err = h.sealEIP8(authMsg)
+	}
 	if err != nil {
 		return s, err
 	}
@@ -683,6 +690,24 @@ func (h *handshakeState) readMsg(msg interface{}, prv *ecdsa.PrivateKey, r io.Re
 	s := rlp.NewStream(bytes.NewReader(dec), 0)
 	err = s.Decode(msg)
 	return buf, err
+}
+
+// UsePreEIP8 enables pre-EIP-8 handshake format for compatibility with older nodes (like XDC)
+var UsePreEIP8 = false
+
+// sealPlain encrypts a handshake message in pre-EIP-8 format.
+// This is needed for compatibility with XDC nodes that don't support EIP-8.
+func (h *handshakeState) sealPlain(msg *authMsgV4) ([]byte, error) {
+	// Pre-EIP-8 format: raw encrypted message without size prefix
+	// Format: signature (65) + keccak256(ephemeral-pubkey) (32) + initiator-pubkey (64) + nonce (32) + token-flag (1) = 194 bytes
+	buf := make([]byte, 194)
+	n := copy(buf, msg.Signature[:])
+	n += copy(buf[n:], crypto.Keccak256(exportPubkey(&h.randomPrivKey.PublicKey)))
+	n += copy(buf[n:], msg.InitiatorPubkey[:])
+	n += copy(buf[n:], msg.Nonce[:])
+	buf[n] = 0 // token-flag
+
+	return ecies.Encrypt(rand.Reader, h.remote, buf, nil, nil)
 }
 
 // sealEIP8 encrypts a handshake message.

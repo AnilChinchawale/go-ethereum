@@ -267,12 +267,14 @@ func Decode(input []byte) (Packet, Pubkey, []byte, error) {
 		req = new(Findnode)
 	case NeighborsPacket:
 		req = new(Neighbors)
-case PingXDCPacket:
-		// XDC uses type 5 (pingXDC) with same structure as Ping.
-		// Try to decode as PingXDC first, fall back to ENRRequest.
-		req = new(PingXDC)
-	case ENRRequestPacket:
-		req = new(ENRRequest)
+case ENRRequestPacket: // Also PingXDCPacket (5) for XDC
+		// XDC uses type 5 for ping, but also used for ENRRequest in standard Ethereum
+		// For XDC networks, decode as Ping
+		if UseXDCPing {
+			req = new(Ping)
+		} else {
+			req = new(ENRRequest)
+		}
 	case ENRResponsePacket:
 		req = new(ENRResponse)
 	default:
