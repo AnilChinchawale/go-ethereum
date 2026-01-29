@@ -86,13 +86,32 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 
 	// XDC pre-merge block announcements and broadcasts
 	case *eth.NewBlockHashesPacket:
-		// TODO: Implement block fetcher for XDC pre-merge sync
-		// For now, accept announcements to keep connection alive
+		// XDC pre-merge: Log block hash announcements
+		// These indicate the peer has new blocks we might need
+		hashes := make([]string, len(*packet))
+		for i, ann := range *packet {
+			hashes[i] = fmt.Sprintf("%d:%s", ann.Number, ann.Hash.Hex()[:10])
+		}
+		peer.Log().Debug("XDC block hashes announced", "count", len(*packet), "blocks", hashes)
+		// Update peer's head based on highest announced block
+		for _, ann := range *packet {
+			if ann.Number > 0 {
+				peer.SetHead(ann.Hash, nil)
+			}
+		}
 		return nil
 
 	case *eth.NewBlockPacket:
-		// TODO: Implement block import for XDC pre-merge sync
-		// For now, accept broadcasts to keep connection alive
+		// XDC pre-merge: Try to import broadcast blocks
+		block := packet.Block
+		peer.Log().Info("XDC block received", "number", block.NumberU64(), "hash", block.Hash().Hex()[:10])
+		// Update peer's head
+		peer.SetHead(block.Hash(), packet.TD)
+		// Try to insert the block (may fail if we don't have parent)
+		if _, err := h.chain.InsertChain([]*types.Block{block}); err != nil {
+			peer.Log().Debug("XDC block import failed", "number", block.NumberU64(), "err", err)
+			// This is expected when we're far behind - we need parent blocks first
+		}
 		return nil
 
 	// XDPoS2 consensus messages - ignore for now (read-only sync mode)
