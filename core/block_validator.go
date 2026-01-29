@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -165,19 +164,6 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	// an error if they don't match.
 	root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number))
 	if header.Root != root {
-		// Log details for debugging XDPoS reward state
-		if v.config.XDPoS != nil {
-			epoch := v.config.XDPoS.Epoch
-			if epoch == 0 {
-				epoch = 900
-			}
-			isCheckpoint := header.Number.Uint64()%epoch == 0 && header.Number.Uint64() > 0
-			log.Warn("State root mismatch", 
-				"number", header.Number,
-				"expected", header.Root,
-				"computed", root,
-				"isCheckpoint", isCheckpoint)
-		}
 		return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
 	}
 	return nil

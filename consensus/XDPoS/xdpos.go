@@ -732,24 +732,11 @@ func (c *XDPoS) Prepare(chain consensus.ChainHeaderReader, header *types.Header)
 
 // Finalize implements consensus.Engine.
 func (c *XDPoS) Finalize(chain consensus.ChainHeaderReader, header *types.Header, statedb vm.StateDB, body *types.Body) {
-	number := header.Number.Uint64()
-	rCheckpoint := c.config.RewardCheckpoint
-	if rCheckpoint == 0 {
-		rCheckpoint = c.config.Epoch
-	}
-
-	// Apply rewards at checkpoint blocks
-	if number > 0 && number%rCheckpoint == 0 {
-		if concreteState, ok := statedb.(*state.StateDB); ok {
-			if c.HookReward != nil {
-				_, err := c.HookReward(chain, concreteState, header)
-				if err != nil {
-					log.Error("Failed to apply XDPoS rewards", "number", number, "err", err)
-				}
-			}
-		}
-	}
-
+	// Note: During sync, we do NOT apply rewards.
+	// XDC reward calculation requires reading from smart contracts (BlockSigner, Validator)
+	// which contain state from transactions. This creates a circular dependency during sync.
+	// The downloaded blocks already have the correct state root with rewards applied.
+	// Rewards are only applied in FinalizeAndAssemble for newly mined blocks.
 	header.UncleHash = types.CalcUncleHash(nil)
 }
 

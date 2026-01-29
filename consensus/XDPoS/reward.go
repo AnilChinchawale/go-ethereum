@@ -162,6 +162,19 @@ func (c *XDPoS) CreateDefaultHookReward() func(chain consensus.ChainHeaderReader
 	return func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error) {
 		number := header.Number.Uint64()
 		epoch := c.config.Epoch
+		rCheckpoint := c.config.RewardCheckpoint
+		if rCheckpoint == 0 {
+			rCheckpoint = epoch
+		}
+
+		// XDC reward calculation: rewards start from the second checkpoint
+		// At checkpoint 900: number=900, number-rCheckpoint=0, no rewards (first epoch)
+		// At checkpoint 1800: number=1800, number-rCheckpoint=900 > 0, rewards calculated
+		// prevCheckpoint = number - (rCheckpoint * 2)
+		if number <= rCheckpoint || number-rCheckpoint <= 0 {
+			log.Debug("Skipping rewards - first checkpoint", "number", number, "checkpoint", rCheckpoint)
+			return make(map[string]interface{}), nil
+		}
 
 		// Get the foundation wallet from config
 		foundationWallet := common.Address{}
@@ -178,24 +191,15 @@ func (c *XDPoS) CreateDefaultHookReward() func(chain consensus.ChainHeaderReader
 			return make(map[string]interface{}), nil
 		}
 
-		// Count signatures in the epoch
-		// In a full implementation, this would scan the blocks in the epoch
-		// and count how many times each masternode signed
+		// Calculate the previous checkpoint and block range for reward calculation
+		// XDC calculates rewards based on signatures from the previous epoch
+		prevCheckpoint := number - (rCheckpoint * 2)
+		startBlockNumber := prevCheckpoint + 1
+		endBlockNumber := startBlockNumber + rCheckpoint - 1
+
+		// Count signatures in the reward range
 		signCount := make(map[common.Address]int64)
-
-		startBlock := number - (number % epoch)
-		if startBlock == 0 {
-			startBlock = 1
-		}
-
-		// Simplified: give each masternode equal weight
-		// In production, this should count actual block signatures
-		for _, mn := range masternodes {
-			signCount[mn] = 1
-		}
-
-		// Scan recent blocks to count actual signatures
-		for blockNum := startBlock; blockNum < number; blockNum++ {
+		for blockNum := startBlockNumber; blockNum <= endBlockNumber; blockNum++ {
 			blockHeader := chain.GetHeaderByNumber(blockNum)
 			if blockHeader != nil {
 				signer, err := c.RecoverSigner(blockHeader)
@@ -203,6 +207,11 @@ func (c *XDPoS) CreateDefaultHookReward() func(chain consensus.ChainHeaderReader
 					signCount[signer]++
 				}
 			}
+		}
+
+		if len(signCount) == 0 {
+			log.Debug("No signatures found for reward calculation", "number", number, "start", startBlockNumber, "end", endBlockNumber)
+			return make(map[string]interface{}), nil
 		}
 
 		return CalculateRewards(chain, state, header, rewardConfig, masternodes, signCount)
