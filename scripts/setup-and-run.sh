@@ -81,8 +81,26 @@ sleep 1
 EXTERNAL_IP=$(curl -s ifconfig.me 2>/dev/null || echo "127.0.0.1")
 log "External IP: $EXTERNAL_IP"
 
+# Build bootnodes list
+BOOTNODE_LIST=""
+for BOOTNODE in "${BOOTNODES[@]}"; do
+    if [[ -n "$BOOTNODE_LIST" ]]; then
+        BOOTNODE_LIST="$BOOTNODE_LIST,$BOOTNODE"
+    else
+        BOOTNODE_LIST="$BOOTNODE"
+    fi
+done
+if [[ -n "$CUSTOM_PEER" ]]; then
+    if [[ -n "$BOOTNODE_LIST" ]]; then
+        BOOTNODE_LIST="$BOOTNODE_LIST,$CUSTOM_PEER"
+    else
+        BOOTNODE_LIST="$CUSTOM_PEER"
+    fi
+fi
+
 # Start the node
 log "Starting XDC node..."
+log "Bootnodes: $BOOTNODE_LIST"
 ./build/bin/geth \
     --datadir "$DATA_DIR" \
     --networkid 50 \
@@ -90,6 +108,8 @@ log "Starting XDC node..."
     --syncmode full \
     --verbosity 4 \
     --nat "extip:$EXTERNAL_IP" \
+    --nodiscover \
+    --bootnodes "$BOOTNODE_LIST" \
     --http \
     --http.addr 0.0.0.0 \
     --http.port 8547 \
