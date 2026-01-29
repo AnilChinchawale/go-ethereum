@@ -61,6 +61,11 @@ type Peer interface {
 
 	RequestBodies([]common.Hash, chan *eth.Response) (*eth.Request, error)
 	RequestReceipts([]common.Hash, chan *eth.Response) (*eth.Request, error)
+
+	// Legacy methods for XDC compatibility (no RequestId wrapper)
+	RequestHeadersByHashLegacy(common.Hash, int, int, bool) error
+	RequestHeadersByNumberLegacy(uint64, int, int, bool) error
+	RequestBodiesLegacy([]common.Hash) error
 }
 
 // newPeerConnection creates a new downloader peer.

@@ -121,15 +121,23 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 			peer.Log().Debug("XDC: empty headers response")
 			return nil
 		}
-		peer.Log().Info("XDC sync: processing headers from legacy response", "count", len(headers))
+		peer.Log().Info("XDC sync: received headers from legacy response", "count", len(headers), "first", headers[0].Number.Uint64())
 		
-		// For now, try to insert headers directly (will fail without bodies, but logs progress)
-		// A full implementation would store these and request bodies
-		for _, header := range headers {
-			peer.Log().Debug("XDC header received", "number", header.Number.Uint64(), "hash", header.Hash().Hex()[:10])
+		// Deliver headers to the XDC downloader
+		(*handler)(h).downloader.DeliverHeadersXDC(peer.ID(), headers)
+		return nil
+
+	// XDC legacy sync: bodies arrived in response to our request
+	case *eth.BlockBodiesResponse:
+		txs, uncles, _ := packet.Unpack()
+		if len(txs) == 0 {
+			peer.Log().Debug("XDC: empty bodies response")
+			return nil
 		}
+		peer.Log().Info("XDC sync: received bodies from legacy response", "count", len(txs))
 		
-		// TODO: Store headers and request bodies for full sync
+		// Deliver bodies to the XDC downloader
+		(*handler)(h).downloader.DeliverBodiesXDC(peer.ID(), txs, uncles)
 		return nil
 
 	// XDPoS2 consensus messages - ignore for now (read-only sync mode)

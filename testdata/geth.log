@@ -1,0 +1,59 @@
+INFO [01-29|13:48:17.150] Maximum peer count                       ETH=50 total=50
+INFO [01-29|13:48:17.152] Smartcard socket not found, disabling    err="stat /run/pcscd/pcscd.comm: no such file or directory"
+INFO [01-29|13:48:17.153] Set global gas cap                       cap=50,000,000
+WARN [01-29|13:48:17.154] Setting network ID with command-line flag id=50
+INFO [01-29|13:48:17.154] Initializing the KZG library             backend=gokzg
+INFO [01-29|13:48:17.155] Allocated trie memory caches             clean=154.00MiB dirty=256.00MiB
+INFO [01-29|13:48:17.155] Using pebble as the backing database
+INFO [01-29|13:48:17.155] Allocated cache and file handles         database=/root/xdpos-part4/testdata/geth/chaindata cache=512.00MiB handles=524,288
+INFO [01-29|13:48:17.296] Opened ancient database                  database=/root/xdpos-part4/testdata/geth/chaindata/ancient/chain readonly=false
+INFO [01-29|13:48:17.296] Opened Era store                         datadir=/root/xdpos-part4/testdata/geth/chaindata/ancient/chain/era
+INFO [01-29|13:48:17.296] State scheme set to already existing     scheme=path
+INFO [01-29|13:48:17.296] Creating XDPoS consensus engine          chainID=50
+INFO [01-29|13:48:17.296] Initialising Ethereum protocol           network=50 dbversion=9
+INFO [01-29|13:48:17.296] Load database journal from file          path=/root/xdpos-part4/testdata/geth/triedb/merkle.journal
+INFO [01-29|13:48:17.328] Opened ancient database                  database=/root/xdpos-part4/testdata/geth/chaindata/ancient/state readonly=false
+INFO [01-29|13:48:17.328] Initialized path database                triecache=154.00MiB statecache=102.00MiB buffer=256.00MiB state-history="last 90000 blocks" journal-dir=/root/xdpos-part4/testdata/geth/triedb
+INFO [01-29|13:48:17.328] 
+INFO [01-29|13:48:17.328] ---------------------------------------------------------------------------------------------------------------------------------------------------------
+INFO [01-29|13:48:17.328] Chain ID:  50 (xdc-mainnet)
+INFO [01-29|13:48:17.328] Consensus: unknown
+INFO [01-29|13:48:17.328] 
+INFO [01-29|13:48:17.328] Pre-Merge hard forks (block based):
+INFO [01-29|13:48:17.328]  - Homestead:                   #1       
+INFO [01-29|13:48:17.328]  - Tangerine Whistle (EIP 150): #2       
+INFO [01-29|13:48:17.328]  - Spurious Dragon/1 (EIP 155): #3       
+INFO [01-29|13:48:17.328]  - Spurious Dragon/2 (EIP 158): #3       
+INFO [01-29|13:48:17.328]  - Byzantium:                   #4       
+INFO [01-29|13:48:17.328]  - Constantinople:              #<nil>
+INFO [01-29|13:48:17.328]  - Petersburg:                  #<nil>
+INFO [01-29|13:48:17.328]  - Istanbul:                    #<nil>
+INFO [01-29|13:48:17.328]  - Berlin:                      #<nil>
+INFO [01-29|13:48:17.328]  - London:                      #<nil>
+INFO [01-29|13:48:17.328] 
+INFO [01-29|13:48:17.328] Merge configured:
+INFO [01-29|13:48:17.328]  - Total terminal difficulty:  <nil>
+INFO [01-29|13:48:17.328] 
+INFO [01-29|13:48:17.328] Post-Merge hard forks (timestamp based):
+INFO [01-29|13:48:17.328] 
+INFO [01-29|13:48:17.328] All fork specifications can be found at https://ethereum.github.io/execution-specs/src/ethereum/forks/
+INFO [01-29|13:48:17.328] 
+INFO [01-29|13:48:17.328] ---------------------------------------------------------------------------------------------------------------------------------------------------------
+INFO [01-29|13:48:17.328] 
+INFO [01-29|13:48:17.328] Loaded most recent local block           number=15 hash=b1cf94..1e9922 age=6y9mo4d
+INFO [01-29|13:48:17.329] Initialized transaction indexer          range="last 2350000 blocks"
+INFO [01-29|13:48:17.345] Enabled full-sync                        head=15 hash=b1cf94..1e9922
+INFO [01-29|13:48:17.345] Gasprice oracle is ignoring threshold set threshold=2
+WARN [01-29|13:48:17.345] Unclean shutdown detected                booted=2026-01-29T13:41:14+0100 age=7m3s
+INFO [01-29|13:48:17.345] Registered sync override service
+WARN [01-29|13:48:17.345] Engine API started but chain not configured for merge yet
+INFO [01-29|13:48:17.345] Starting peer-to-peer node               instance=Geth/v1.17.0-unstable-86bcc2b3-20260129/linux-amd64/go1.24.0
+INFO [01-29|13:48:17.389] New local node record                    seq=1,769,688,763,908 id=a31b22d7237ae9f8 ip=95.217.56.168 udp=30304 tcp=30304
+INFO [01-29|13:48:17.389] Started P2P networking                   self=enode://c9214a779088e615affcd09a52d742372128b56dceac4dccab3e6fcd21fe39e131aef51eafa185d7f450fa713819a7b47ab31d9cadf78f9635fee5e40248fd07@95.217.56.168:30304
+INFO [01-29|13:48:17.390] IPC endpoint opened                      url=/root/xdpos-part4/testdata/geth.ipc
+INFO [01-29|13:48:17.390] Loaded JWT secret file                   path=/root/xdpos-part4/testdata/geth/jwtsecret crc32=0xe810e3e4
+INFO [01-29|13:48:17.390] HTTP server started                      endpoint=[::]:8547 auth=false prefix= cors= vhosts=*
+INFO [01-29|13:48:17.390] WebSocket enabled                        url=ws://127.0.0.1:8551
+INFO [01-29|13:48:17.390] HTTP server started                      endpoint=127.0.0.1:8551 auth=true  prefix= cors=localhost vhosts=localhost
+INFO [01-29|13:48:17.390] Loaded local transaction journal         transactions=0 dropped=0
+INFO [01-29|13:48:17.390] Started log indexer
