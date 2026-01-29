@@ -18,7 +18,6 @@ package eth
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -343,11 +342,26 @@ func serviceGetReceiptsQuery69(chain *core.BlockChain, query GetReceiptsRequest)
 }
 
 func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
-	return errors.New("block announcements disallowed") // We dropped support for non-merge networks
+	// XDC is a pre-merge network, accept block announcements
+	ann := new(NewBlockHashesPacket)
+	if err := msg.Decode(ann); err != nil {
+		return fmt.Errorf("failed to decode NewBlockHashesPacket: %v", err)
+	}
+	return backend.Handle(peer, ann)
 }
 
 func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
-	return errors.New("block broadcasts disallowed") // We dropped support for non-merge networks
+	// XDC is a pre-merge network, accept block broadcasts
+	ann := new(NewBlockPacket)
+	if err := msg.Decode(ann); err != nil {
+		return fmt.Errorf("failed to decode NewBlockPacket: %v", err)
+	}
+	if ann.Block == nil {
+		return fmt.Errorf("nil block in NewBlockPacket")
+	}
+	ann.Block.ReceivedAt = msg.Time()
+	ann.Block.ReceivedFrom = peer
+	return backend.Handle(peer, ann)
 }
 
 func handleBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {

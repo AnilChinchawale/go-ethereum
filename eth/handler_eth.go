@@ -84,6 +84,17 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		}
 		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
 
+	// XDC pre-merge block announcements and broadcasts
+	case *eth.NewBlockHashesPacket:
+		// TODO: Implement block fetcher for XDC pre-merge sync
+		// For now, accept announcements to keep connection alive
+		return nil
+
+	case *eth.NewBlockPacket:
+		// TODO: Implement block import for XDC pre-merge sync
+		// For now, accept broadcasts to keep connection alive
+		return nil
+
 	// XDPoS2 consensus messages - ignore for now (read-only sync mode)
 	case *eth.VotePacket:
 		// TODO: Forward to XDPoS consensus engine when implemented
