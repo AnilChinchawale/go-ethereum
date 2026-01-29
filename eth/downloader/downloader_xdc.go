@@ -273,8 +273,23 @@ func (d *Downloader) fetchHeightXDC(p *peerConnection, hash common.Hash) (*types
 	}
 }
 
+// drainHeaderChannel removes any stale responses from the header channel
+func drainHeaderChannel() {
+	for {
+		select {
+		case <-xdcHeaderCh:
+			// Discard stale response
+		default:
+			return
+		}
+	}
+}
+
 // requestHeadersByNumberXDC requests headers with timeout handling using legacy format
 func (d *Downloader) requestHeadersByNumberXDC(p *peerConnection, from uint64, count, skip int, reverse bool) ([]*types.Header, error) {
+	// Drain any stale responses before making new request
+	drainHeaderChannel()
+	
 	// Use legacy request (no RequestId wrapper)
 	if err := p.peer.RequestHeadersByNumberLegacy(from, count, skip, reverse); err != nil {
 		return nil, fmt.Errorf("failed to request headers: %w", err)
@@ -292,6 +307,12 @@ func (d *Downloader) requestHeadersByNumberXDC(p *peerConnection, from uint64, c
 				case xdcHeaderCh <- resp:
 				default:
 				}
+				continue
+			}
+			// Verify we got the expected response (approximate check)
+			if len(resp.headers) > 0 && count == 1 && len(resp.headers) != 1 {
+				// Got response from a different request, skip it
+				log.Debug("XDC sync: skipping mismatched header response", "expected", count, "got", len(resp.headers))
 				continue
 			}
 			return resp.headers, nil
