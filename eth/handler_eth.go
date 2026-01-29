@@ -84,6 +84,19 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		}
 		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
 
+	// XDPoS2 consensus messages - ignore for now (read-only sync mode)
+	case *eth.VotePacket:
+		// TODO: Forward to XDPoS consensus engine when implemented
+		return nil
+
+	case *eth.TimeoutPacket:
+		// TODO: Forward to XDPoS consensus engine when implemented
+		return nil
+
+	case *eth.SyncInfoPacket:
+		// TODO: Forward to XDPoS consensus engine when implemented
+		return nil
+
 	default:
 		return fmt.Errorf("unexpected eth packet type: %T", packet)
 	}

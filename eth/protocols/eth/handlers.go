@@ -579,28 +579,30 @@ func handleNodeData(backend Backend, msg Decoder, peer *Peer) error {
 
 // handleVoteMsg handles XDPoS2 vote messages
 func handleVoteMsg(backend Backend, msg Decoder, peer *Peer) error {
-	// Decode and forward to consensus engine
-	var vote []byte
-	if err := msg.Decode(&vote); err != nil {
+	// XDC sends Vote as raw RLP, decode as RawValue to preserve bytes
+	var rawVote rlp.RawValue
+	if err := msg.Decode(&rawVote); err != nil {
 		return fmt.Errorf("failed to decode VoteMsg: %v", err)
 	}
-	return backend.Handle(peer, &VotePacket{Vote: vote})
+	return backend.Handle(peer, &VotePacket{Vote: rawVote})
 }
 
 // handleTimeoutMsg handles XDPoS2 timeout messages
 func handleTimeoutMsg(backend Backend, msg Decoder, peer *Peer) error {
-	var timeout []byte
-	if err := msg.Decode(&timeout); err != nil {
+	// XDC sends Timeout as raw RLP
+	var rawTimeout rlp.RawValue
+	if err := msg.Decode(&rawTimeout); err != nil {
 		return fmt.Errorf("failed to decode TimeoutMsg: %v", err)
 	}
-	return backend.Handle(peer, &TimeoutPacket{Timeout: timeout})
+	return backend.Handle(peer, &TimeoutPacket{Timeout: rawTimeout})
 }
 
 // handleSyncInfoMsg handles XDPoS2 sync info messages
 func handleSyncInfoMsg(backend Backend, msg Decoder, peer *Peer) error {
-	var syncInfo []byte
-	if err := msg.Decode(&syncInfo); err != nil {
+	// XDC sends SyncInfo as raw RLP
+	var rawSyncInfo rlp.RawValue
+	if err := msg.Decode(&rawSyncInfo); err != nil {
 		return fmt.Errorf("failed to decode SyncInfoMsg: %v", err)
 	}
-	return backend.Handle(peer, &SyncInfoPacket{SyncInfo: syncInfo})
+	return backend.Handle(peer, &SyncInfoPacket{SyncInfo: rawSyncInfo})
 }
