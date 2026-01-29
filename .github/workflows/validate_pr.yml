@@ -23,7 +23,7 @@ jobs:
                 issue_number: context.payload.pull_request.number,
                 body: `## PR Closed as Spam
 
-            This PR was automatically closed because the title format \`feaat:\`, \`fiax:\`, or \`chorae:\` is commonly associated with spam contributions.
+            This PR was automatically closed because the title format \`feat:\`, \`fix:\`, or \`chore:\` is commonly associated with spam contributions.
 
             If this is a legitimate contribution, please:
             1. Review our contribution guidelines
