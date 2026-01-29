@@ -467,6 +467,9 @@ func (d *Downloader) fetchHeadersXDC(p *peerConnection, from uint64, pivot uint6
 func (d *Downloader) fetchBodiesXDC(p *peerConnection, from uint64) error {
 	log.Info("XDC sync: downloading bodies", "from", from)
 
+	idleCount := 0
+	const maxIdleCount = 100 // Wait up to 5 seconds (100 * 50ms) for headers to arrive
+
 	for {
 		select {
 		case <-d.cancelCh:
@@ -479,13 +482,20 @@ func (d *Downloader) fetchBodiesXDC(p *peerConnection, from uint64) error {
 		if request == nil {
 			// Check if we're done
 			if !d.queue.InFlightBlocks() && d.queue.PendingBodies() == 0 {
-				log.Info("XDC sync: body download complete")
-				return nil
+				idleCount++
+				if idleCount > maxIdleCount {
+					log.Info("XDC sync: body download complete (no more work)")
+					return nil
+				}
+				// Headers might still be processing, wait a bit
+				time.Sleep(50 * time.Millisecond)
+				continue
 			}
 			// Wait a bit for more work
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
+		idleCount = 0 // Reset idle counter when we have work
 
 		// Build hash list for body request
 		hashes := make([]common.Hash, len(request.Headers))
@@ -516,22 +526,37 @@ func (d *Downloader) fetchBodiesXDC(p *peerConnection, from uint64) error {
 				continue
 			}
 
-			log.Debug("XDC sync: received bodies", "count", len(resp.txs))
+			bodyCount := len(resp.txs)
+			log.Debug("XDC sync: received bodies", "count", bodyCount)
+
+			if bodyCount == 0 {
+				log.Warn("XDC sync: empty body response")
+				continue
+			}
+
+			// Ensure uncles array matches txs array length
+			if len(resp.uncles) != bodyCount {
+				log.Warn("XDC sync: tx/uncle count mismatch", "txs", bodyCount, "uncles", len(resp.uncles))
+				continue
+			}
 
 			// Deliver bodies to the queue
-			// Note: XDC doesn't have withdrawals, so pass nil
+			// Note: XDC doesn't have withdrawals (pre-Shanghai), so pass nil arrays
 			// Hash arrays are flat - one hash per body (computed from transactions/uncles in that body)
 			hasher := trie.NewStackTrie(nil)
-			txHashes := make([]common.Hash, len(resp.txs))
-			uncleHashes := make([]common.Hash, len(resp.uncles))
-			for i, txs := range resp.txs {
-				txHashes[i] = types.DeriveSha(types.Transactions(txs), hasher)
-			}
-			for i, uncles := range resp.uncles {
-				uncleHashes[i] = types.CalcUncleHash(uncles)
+			txHashes := make([]common.Hash, bodyCount)
+			uncleHashes := make([]common.Hash, bodyCount)
+			withdrawals := make([][]*types.Withdrawal, bodyCount) // All nil entries
+			withdrawalHashes := make([]common.Hash, bodyCount)    // All zero hashes
+			
+			for i := 0; i < bodyCount; i++ {
+				txHashes[i] = types.DeriveSha(types.Transactions(resp.txs[i]), hasher)
+				uncleHashes[i] = types.CalcUncleHash(resp.uncles[i])
+				// withdrawals[i] remains nil (no withdrawals for XDC)
+				// withdrawalHashes[i] remains zero (not used when header.WithdrawalsHash is nil)
 			}
 
-			accepted, err := d.queue.DeliverBodies(p.id, resp.txs, txHashes, resp.uncles, uncleHashes, nil, nil)
+			accepted, err := d.queue.DeliverBodies(p.id, resp.txs, txHashes, resp.uncles, uncleHashes, withdrawals, withdrawalHashes)
 			if err != nil {
 				log.Warn("XDC sync: body delivery failed", "err", err)
 			} else {

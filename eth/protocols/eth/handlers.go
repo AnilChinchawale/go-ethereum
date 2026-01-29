@@ -478,27 +478,10 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 	log.Debug("Using legacy BlockBodies format", "version", version)
-	metadata := func() interface{} {
-		var (
-			txsHashes        = make([]common.Hash, len(legacyRes))
-			uncleHashes      = make([]common.Hash, len(legacyRes))
-			withdrawalHashes = make([]common.Hash, len(legacyRes))
-		)
-		hasher := trie.NewStackTrie(nil)
-		for i, body := range legacyRes {
-			txsHashes[i] = types.DeriveSha(types.Transactions(body.Transactions), hasher)
-			uncleHashes[i] = types.CalcUncleHash(body.Uncles)
-			if body.Withdrawals != nil {
-				withdrawalHashes[i] = types.DeriveSha(types.Withdrawals(body.Withdrawals), hasher)
-			}
-		}
-		return [][]common.Hash{txsHashes, uncleHashes, withdrawalHashes}
-	}
-	return peer.dispatchResponse(&Response{
-		id:   0,
-		code: BlockBodiesMsg,
-		Res:  &legacyRes,
-	}, metadata)
+	
+	// For XDC legacy sync, pass bodies directly to backend for processing
+	// instead of using dispatcher (which expects RequestId matching)
+	return backend.Handle(peer, &legacyRes)
 }
 
 func handleReceipts[L ReceiptsList](backend Backend, msg Decoder, peer *Peer) error {
