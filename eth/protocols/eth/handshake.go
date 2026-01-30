@@ -24,9 +24,21 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 )
+
+// XDCBlockchain extends forkid.Blockchain with methods needed for XDC sync.
+// This allows getting the actual highest block during sync, not just the canonical head.
+type XDCBlockchain interface {
+	forkid.Blockchain
+	// CurrentBlock returns the current head block (may be higher than CurrentHeader during sync)
+	CurrentBlock() *types.Header
+	// GetHeaderByNumber returns a header by block number
+	GetHeaderByNumber(number uint64) *types.Header
+}
 
 const (
 	// handshakeTimeout is the maximum allowed time for the `eth` handshake to
@@ -55,10 +67,24 @@ func (p *Peer) handshake62(networkID uint64, chain forkid.Blockchain) error {
 	var (
 		genesis = chain.Genesis()
 		latest  = chain.CurrentHeader()
-		// XDC is pre-merge, so TD is relevant. Use a placeholder TD based on block number.
-		// In a proper implementation, this should come from the chain's state.
-		td = new(big.Int).SetUint64(latest.Number.Uint64())
 	)
+
+	// XDC fix: During sync, CurrentHeader() may return a stale canonical head.
+	// Try to get the actual current block which includes synced blocks.
+	if xdcChain, ok := chain.(XDCBlockchain); ok {
+		if currentBlock := xdcChain.CurrentBlock(); currentBlock != nil {
+			if currentBlock.Number.Uint64() > latest.Number.Uint64() {
+				log.Debug("XDC handshake: using CurrentBlock instead of CurrentHeader",
+					"currentBlock", currentBlock.Number.Uint64(),
+					"currentHeader", latest.Number.Uint64())
+				latest = currentBlock
+			}
+		}
+	}
+
+	// XDC is pre-merge, so TD is relevant. Use a placeholder TD based on block number.
+	// In a proper implementation, this should come from the chain's state.
+	td := new(big.Int).SetUint64(latest.Number.Uint64())
 	errc := make(chan error, 2)
 	go func() {
 		pkt := &StatusPacket62{
