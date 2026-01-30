@@ -12,18 +12,18 @@ import (
 // VotePool contains votes grouped by block hash
 type VotePool struct {
 	mu    sync.RWMutex
-	votes map[common.Hash][]*VoteXDPoS
+	votes map[common.Hash][]*Vote
 }
 
 // NewVotePool creates a new vote pool
 func NewVotePool() *VotePool {
 	return &VotePool{
-		votes: make(map[common.Hash][]*VoteXDPoS),
+		votes: make(map[common.Hash][]*Vote),
 	}
 }
 
 // Add adds a vote to the pool
-func (p *VotePool) Add(vote *VoteXDPoS) {
+func (p *VotePool) Add(vote *Vote) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	
@@ -35,7 +35,7 @@ func (p *VotePool) Add(vote *VoteXDPoS) {
 }
 
 // Get returns all votes for a block
-func (p *VotePool) Get(hash common.Hash) []*VoteXDPoS {
+func (p *VotePool) Get(hash common.Hash) []*Vote {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.votes[hash]

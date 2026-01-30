@@ -1,5 +1,5 @@
-// Copyright (c) 2018 XDPoSChain
-// XDPoS 2.0 consensus types
+// Copyright (c) 2024 XDC Network
+// This file implements XDPoS 2.0 consensus types for BFT consensus.
 
 package types
 
@@ -13,37 +13,77 @@ import (
 
 // Round number type in XDPoS 2.0
 type Round uint64
+
+// Signature is a cryptographic signature
 type Signature []byte
 
-// Block Info struct in XDPoS 2.0, used for vote message, etc.
+// DeepCopy creates a deep copy of the signature
+func (s Signature) DeepCopy() Signature {
+	if s == nil {
+		return nil
+	}
+	cpy := make([]byte, len(s))
+	copy(cpy, s)
+	return cpy
+}
+
+// BlockInfo struct in XDPoS 2.0, used for vote message, QC, etc.
 type BlockInfo struct {
 	Hash   common.Hash `json:"hash"`
 	Round  Round       `json:"round"`
 	Number *big.Int    `json:"number"`
 }
 
+// DeepCopy creates a deep copy of BlockInfo
+func (bi *BlockInfo) DeepCopy() *BlockInfo {
+	if bi == nil {
+		return nil
+	}
+	return &BlockInfo{
+		Hash:   bi.Hash,
+		Round:  bi.Round,
+		Number: new(big.Int).Set(bi.Number),
+	}
+}
+
 // Vote message in XDPoS 2.0
-type VoteXDPoS struct {
-	signer            common.Address //field not exported
+type Vote struct {
+	signer            common.Address // field not exported
 	ProposedBlockInfo *BlockInfo     `json:"proposedBlockInfo"`
 	Signature         Signature      `json:"signature"`
 	GapNumber         uint64         `json:"gapNumber"`
 }
 
-func (v *VoteXDPoS) Hash() common.Hash {
+// DeepCopy creates a deep copy of Vote
+func (v *Vote) DeepCopy() *Vote {
+	if v == nil {
+		return nil
+	}
+	return &Vote{
+		signer:            v.signer,
+		ProposedBlockInfo: v.ProposedBlockInfo.DeepCopy(),
+		Signature:         v.Signature.DeepCopy(),
+		GapNumber:         v.GapNumber,
+	}
+}
+
+// Hash returns the hash of the vote
+func (v *Vote) Hash() common.Hash {
 	return rlpHash(v)
 }
 
-func (v *VoteXDPoS) PoolKey() string {
-	// return the voted block hash
+// PoolKey returns a unique key for the vote pool
+func (v *Vote) PoolKey() string {
 	return fmt.Sprint(v.ProposedBlockInfo.Round, ":", v.GapNumber, ":", v.ProposedBlockInfo.Number, ":", v.ProposedBlockInfo.Hash.Hex())
 }
 
-func (v *VoteXDPoS) GetSigner() common.Address {
+// GetSigner returns the signer address
+func (v *Vote) GetSigner() common.Address {
 	return v.signer
 }
 
-func (v *VoteXDPoS) SetSigner(signer common.Address) {
+// SetSigner sets the signer address
+func (v *Vote) SetSigner(signer common.Address) {
 	v.signer = signer
 }
 
@@ -55,55 +95,116 @@ type Timeout struct {
 	GapNumber uint64
 }
 
+// DeepCopy creates a deep copy of Timeout
+func (t *Timeout) DeepCopy() *Timeout {
+	if t == nil {
+		return nil
+	}
+	return &Timeout{
+		signer:    t.signer,
+		Round:     t.Round,
+		Signature: t.Signature.DeepCopy(),
+		GapNumber: t.GapNumber,
+	}
+}
+
+// Hash returns the hash of the timeout
 func (t *Timeout) Hash() common.Hash {
 	return rlpHash(t)
 }
 
+// PoolKey returns a unique key for the timeout pool
 func (t *Timeout) PoolKey() string {
-	// timeout pool key is round:gapNumber
 	return fmt.Sprint(t.Round, ":", t.GapNumber)
 }
 
+// GetSigner returns the signer address
 func (t *Timeout) GetSigner() common.Address {
 	return t.signer
 }
 
+// SetSigner sets the signer address
 func (t *Timeout) SetSigner(signer common.Address) {
 	t.signer = signer
 }
 
-// BFT Sync Info message in XDPoS 2.0
+// SyncInfo - BFT Sync Info message in XDPoS 2.0
 type SyncInfo struct {
 	HighestQuorumCert  *QuorumCert
 	HighestTimeoutCert *TimeoutCert
 }
 
+// DeepCopy creates a deep copy of SyncInfo
+func (s *SyncInfo) DeepCopy() *SyncInfo {
+	if s == nil {
+		return nil
+	}
+	return &SyncInfo{
+		HighestQuorumCert:  s.HighestQuorumCert.DeepCopy(),
+		HighestTimeoutCert: s.HighestTimeoutCert.DeepCopy(),
+	}
+}
+
+// Hash returns the hash of SyncInfo
 func (s *SyncInfo) Hash() common.Hash {
 	return rlpHash(s)
 }
 
-// Quorum Certificate struct in XDPoS 2.0
+// QuorumCert - Quorum Certificate struct in XDPoS 2.0
 type QuorumCert struct {
 	ProposedBlockInfo *BlockInfo  `json:"proposedBlockInfo"`
 	Signatures        []Signature `json:"signatures"`
 	GapNumber         uint64      `json:"gapNumber"`
 }
 
-// Timeout Certificate struct in XDPoS 2.0
+// DeepCopy creates a deep copy of QuorumCert
+func (qc *QuorumCert) DeepCopy() *QuorumCert {
+	if qc == nil {
+		return nil
+	}
+	sigsCopy := make([]Signature, len(qc.Signatures))
+	for i, sig := range qc.Signatures {
+		sigsCopy[i] = sig.DeepCopy()
+	}
+	return &QuorumCert{
+		ProposedBlockInfo: qc.ProposedBlockInfo.DeepCopy(),
+		Signatures:        sigsCopy,
+		GapNumber:         qc.GapNumber,
+	}
+}
+
+// TimeoutCert - Timeout Certificate struct in XDPoS 2.0
 type TimeoutCert struct {
 	Round      Round
 	Signatures []Signature
 	GapNumber  uint64
 }
 
-// The parsed extra fields in block header in XDPoS 2.0 (excluding the version byte)
-// The version byte (consensus version) is the first byte in header's extra and it's only valid with value >= 2
+// DeepCopy creates a deep copy of TimeoutCert
+func (tc *TimeoutCert) DeepCopy() *TimeoutCert {
+	if tc == nil {
+		return nil
+	}
+	sigsCopy := make([]Signature, len(tc.Signatures))
+	for i, sig := range tc.Signatures {
+		sigsCopy[i] = sig.DeepCopy()
+	}
+	return &TimeoutCert{
+		Round:      tc.Round,
+		Signatures: sigsCopy,
+		GapNumber:  tc.GapNumber,
+	}
+}
+
+// ExtraFields_v2 - The parsed extra fields in block header in XDPoS 2.0
+// The version byte (consensus version) is the first byte in header's extra
+// and it's only valid with value >= 2
 type ExtraFields_v2 struct {
 	Round      Round
 	QuorumCert *QuorumCert
 }
 
-// Encode XDPoS 2.0 extra fields into bytes
+// EncodeToBytes encodes XDPoS 2.0 extra fields into bytes
 func (e *ExtraFields_v2) EncodeToBytes() ([]byte, error) {
 	bytes, err := rlp.EncodeToBytes(e)
 	if err != nil {
@@ -113,6 +214,7 @@ func (e *ExtraFields_v2) EncodeToBytes() ([]byte, error) {
 	return append(versionByte, bytes...), nil
 }
 
+// EpochSwitchInfo contains information about epoch switches
 type EpochSwitchInfo struct {
 	Penalties                  []common.Address
 	Standbynodes               []common.Address
@@ -122,20 +224,24 @@ type EpochSwitchInfo struct {
 	EpochSwitchParentBlockInfo *BlockInfo
 }
 
+// VoteForSign is the data structure used for vote signing
 type VoteForSign struct {
 	ProposedBlockInfo *BlockInfo
 	GapNumber         uint64
 }
 
+// VoteSigHash returns the hash to be signed for a vote
 func VoteSigHash(m *VoteForSign) common.Hash {
 	return rlpHash(m)
 }
 
+// TimeoutForSign is the data structure used for timeout signing
 type TimeoutForSign struct {
 	Round     Round
 	GapNumber uint64
 }
 
+// TimeoutSigHash returns the hash to be signed for a timeout
 func TimeoutSigHash(m *TimeoutForSign) common.Hash {
 	return rlpHash(m)
 }

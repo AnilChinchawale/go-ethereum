@@ -586,11 +586,55 @@ type XDPoSConfig struct {
 
 // XDPoSV2Config holds XDPoS 2.0 specific configuration
 type XDPoSV2Config struct {
-	SwitchBlock          *big.Int `json:"switchBlock"`          // Block number to switch to V2
-	MinePeriod           uint64   `json:"minePeriod"`           // Mining period in seconds
-	TimeoutPeriod        uint64   `json:"timeoutPeriod"`        // Timeout period in seconds
-	TimeoutSyncThreshold uint64   `json:"timeoutSyncThreshold"` // Timeout sync threshold
-	CertThreshold        uint64   `json:"certThreshold"`        // Certificate threshold (2/3 of validators)
+	SwitchBlock   *big.Int            `json:"switchBlock"`   // Block number to switch to V2
+	SwitchEpoch   uint64              `json:"switchEpoch"`   // Epoch number at switch
+	CurrentConfig *V2EpochConfig      `json:"-"`             // Current epoch config (runtime)
+	ConfigIndex   []V2EpochConfigItem `json:"configIndex"`   // Config index for different epochs
+}
+
+// V2EpochConfig holds per-epoch configuration for XDPoS 2.0
+type V2EpochConfig struct {
+	MinePeriod           int               `json:"minePeriod"`           // Mining period in seconds
+	TimeoutPeriod        int               `json:"timeoutPeriod"`        // Timeout period in seconds
+	TimeoutSyncThreshold int               `json:"timeoutSyncThreshold"` // Timeout sync threshold
+	CertThreshold        float64           `json:"certThreshold"`        // Certificate threshold (e.g., 0.667 for 2/3)
+	MaxMasternodes       int               `json:"maxMasternodes"`       // Maximum masternodes per epoch
+	ExpTimeoutConfig     ExpTimeoutConfig  `json:"expTimeoutConfig"`     // Exponential timeout config
+}
+
+// ExpTimeoutConfig holds exponential backoff configuration for timeouts
+type ExpTimeoutConfig struct {
+	Base        float64 `json:"base"`        // Exponential base (e.g., 2.0)
+	MaxExponent int     `json:"maxExponent"` // Maximum exponent
+}
+
+// V2EpochConfigItem maps epochs to their configurations
+type V2EpochConfigItem struct {
+	EpochNumber uint64         `json:"epochNumber"`
+	Config      *V2EpochConfig `json:"config"`
+}
+
+// DefaultV2Config returns the default V2 configuration
+func DefaultV2Config() *V2EpochConfig {
+	return &V2EpochConfig{
+		MinePeriod:           2,     // 2 seconds
+		TimeoutPeriod:        10,    // 10 seconds
+		TimeoutSyncThreshold: 3,     // Send SyncInfo every 3 timeouts
+		CertThreshold:        0.667, // 2/3 + 1 for BFT safety
+		MaxMasternodes:       108,   // Max masternodes
+		ExpTimeoutConfig: ExpTimeoutConfig{
+			Base:        2.0,
+			MaxExponent: 6,
+		},
+	}
+}
+
+// GetCurrentConfig returns the current epoch config, initializing if needed
+func (v *XDPoSV2Config) GetCurrentConfig() *V2EpochConfig {
+	if v.CurrentConfig == nil {
+		v.CurrentConfig = DefaultV2Config()
+	}
+	return v.CurrentConfig
 }
 
 // String implements the stringer interface, returning the consensus engine details.
