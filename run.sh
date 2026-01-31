@@ -25,7 +25,7 @@ done
 if [ "$INIT" = true ]; then
     rm -rf "$DATADIR"
     mkdir -p "$DATADIR"
-    [ ! -f "genesis/mainnet.json" ] && mkdir -p genesis && curl -sL "https://raw.githubusercontent.com/XinFinOrg/XinFin-Node/master/mainnet/genesis.json" -o genesis/mainnet.json
+    [ ! -f "genesis/mainnet.json" ] && mkdir -p genesis && curl -sL "genesis/mainnet.json" -o genesis/mainnet.json
     ./build/bin/geth --datadir "$DATADIR" init genesis/mainnet.json
 fi
 
