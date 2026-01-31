@@ -34,6 +34,13 @@ func AttachConsensusV2Hooks(adaptor *XDPoS.XDPoS, bc *core.BlockChain, chainConf
 		}
 		rewards := make(map[string]interface{})
 
+		// Skip reward for first checkpoint (like v2.6.8)
+		rCheckpoint := chainConfig.XDPoS.Epoch
+		if number <= rCheckpoint || number-rCheckpoint == 0 {
+			log.Debug("Skipping first epoch reward", "number", number)
+			return rewards, nil
+		}
+
 		// Skip hook reward if this is the first v2 block
 		if chainConfig.XDPoS.V2 != nil && chainConfig.XDPoS.V2.SwitchBlock != nil {
 			if number == chainConfig.XDPoS.V2.SwitchBlock.Uint64()+1 {
@@ -93,60 +100,40 @@ func AttachConsensusV2Hooks(adaptor *XDPoS.XDPoS, bc *core.BlockChain, chainConf
 // GetSigningTxCount gets signing transaction sender count for reward calculation
 func GetSigningTxCount(c *XDPoS.XDPoS, chain *core.BlockChain, header *types.Header, chainConfig *params.ChainConfig, totalSigner *uint64) (map[common.Address]*contracts.RewardLog, error) {
 	number := header.Number.Uint64()
-	epoch := chainConfig.XDPoS.Epoch
-	rewardEpochCount := uint64(2)
-	signEpochCount := uint64(1)
+	rCheckpoint := chainConfig.XDPoS.Epoch
 	signers := make(map[common.Address]*contracts.RewardLog)
-	mapBlkHash := map[uint64]common.Hash{}
 
-	// Block signer contract address
-	blockSignersAddr := common.HexToAddress(common.BlockSigners)
+	blockSignersAddr := common.BlockSignersBinary
 
-	// Prevent overflow
 	if number == 0 {
 		return signers, nil
 	}
 
-	data := make(map[common.Hash][]common.Address)
-	epochCount := uint64(0)
-	var masternodes []common.Address
-	var startBlockNumber, endBlockNumber uint64
+	// Calculate ranges like v2.6.8 - simple math, not epoch detection
+	prevCheckpoint := number - (rCheckpoint * 2)
+	startBlockNumber := prevCheckpoint + 1
+	if startBlockNumber < 1 {
+		startBlockNumber = 1
+	}
+	endBlockNumber := startBlockNumber + rCheckpoint - 1
 
-	// Walk backwards through blocks to find signing transactions
+	data := make(map[common.Hash][]common.Address)
+	mapBlkHash := map[uint64]common.Hash{}
+
+	// Scan blocks from number-1 down to startBlockNumber
 	currentHeader := header
-	for i := number - 1; i > 0; i-- {
+	for i := number - 1; i >= startBlockNumber && i > 0; i-- {
 		parentHash := currentHeader.ParentHash
 		currentHeader = chain.GetHeader(parentHash, i)
 		if currentHeader == nil {
-			log.Error("[GetSigningTxCount] Failed to get header", "number", i)
 			break
 		}
-
-		// Check if this is an epoch switch (checkpoint)
-		isEpochSwitch := i%epoch == 0
-
-		if isEpochSwitch {
-			epochCount++
-			if epochCount == signEpochCount {
-				endBlockNumber = i - 1
-			}
-			if epochCount == rewardEpochCount {
-				startBlockNumber = i + 1
-				masternodes = c.GetMasternodesFromCheckpointHeader(currentHeader, i, i/epoch)
-				break
-			}
-		}
-
 		mapBlkHash[i] = currentHeader.Hash()
 
-		// Get signing transactions from block
 		block := chain.GetBlock(currentHeader.Hash(), i)
 		if block != nil {
-			txs := block.Transactions()
-			for _, tx := range txs {
-				// Check if this is a signing transaction (to block signer contract)
+			for _, tx := range block.Transactions() {
 				if tx.To() != nil && *tx.To() == blockSignersAddr {
-					// Extract block hash from tx data (last 32 bytes)
 					txData := tx.Data()
 					if len(txData) >= 32 {
 						blkHash := common.BytesToHash(txData[len(txData)-32:])
@@ -158,46 +145,39 @@ func GetSigningTxCount(c *XDPoS.XDPoS, chain *core.BlockChain, header *types.Hea
 				}
 			}
 		}
-
-		// Prevent infinite loop
-		if i == 0 {
-			break
-		}
 	}
 
-	// Build signer map for the reward epoch
+	// Get masternodes from prevCheckpoint header
+	prevHeader := chain.GetHeaderByNumber(prevCheckpoint)
+	var masternodes []common.Address
+	if prevHeader != nil {
+		masternodes = c.GetMasternodesFromCheckpointHeader(prevHeader, prevCheckpoint, prevCheckpoint/rCheckpoint)
+	}
+
 	masternodeMap := make(map[common.Address]bool)
 	for _, mn := range masternodes {
 		masternodeMap[mn] = true
 	}
 
+	// Build signer map for the reward epoch
 	for i := startBlockNumber; i <= endBlockNumber; i++ {
 		if i%common.MergeSignRange == 0 {
 			addrs := data[mapBlkHash[i]]
 			if len(addrs) > 0 {
-				addrSigners := make(map[common.Address]bool)
 				for _, addr := range addrs {
 					if masternodeMap[addr] {
-						if _, ok := addrSigners[addr]; !ok {
-							addrSigners[addr] = true
+						if _, exist := signers[addr]; exist {
+							signers[addr].Sign++
+						} else {
+							signers[addr] = &contracts.RewardLog{Sign: 1, Reward: new(big.Int)}
 						}
+						*totalSigner++
 					}
-				}
-
-				for addr := range addrSigners {
-					_, exist := signers[addr]
-					if exist {
-						signers[addr].Sign++
-					} else {
-						signers[addr] = &contracts.RewardLog{Sign: 1, Reward: new(big.Int)}
-					}
-					*totalSigner++
 				}
 			}
 		}
 	}
 
 	log.Info("Calculate reward at checkpoint", "startBlock", startBlockNumber, "endBlock", endBlockNumber, "signers", len(signers))
-
 	return signers, nil
 }

@@ -59,6 +59,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"fmt"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -710,7 +711,28 @@ func (c *XDPoS) Prepare(chain consensus.ChainHeaderReader, header *types.Header)
 }
 
 // Finalize implements consensus.Engine.
-func (c *XDPoS) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
+func (c *XDPoS) Finalize(chain consensus.ChainHeaderReader, header *types.Header, statedb vm.StateDB, body *types.Body) {
+	number := header.Number.Uint64()
+	rCheckpoint := c.config.RewardCheckpoint
+	if rCheckpoint == 0 {
+		rCheckpoint = c.config.Epoch
+	}
+
+	// Apply rewards at checkpoint blocks
+	if c.HookReward != nil && number%rCheckpoint == 0 {
+		if sdb, ok := statedb.(*state.StateDB); ok {
+			log.Info("Finalize: Applying HookReward", "block", number)
+			rewards, err := c.HookReward(chain, sdb, header)
+			if err != nil {
+				log.Error("HookReward failed in Finalize", "number", number, "err", err)
+			} else {
+				log.Info("Finalize: HookReward completed", "block", number, "rewards", len(rewards))
+			}
+		} else {
+			log.Warn("Finalize: statedb is not *state.StateDB, cannot apply rewards", "block", number, "type", fmt.Sprintf("%T", statedb))
+		}
+	}
+
 	header.UncleHash = types.CalcUncleHash(nil)
 }
 

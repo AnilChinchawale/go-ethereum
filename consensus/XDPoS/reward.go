@@ -183,23 +183,29 @@ func (c *XDPoS) CreateDefaultHookReward() func(chain consensus.ChainHeaderReader
 		// and count how many times each masternode signed
 		signCount := make(map[common.Address]int64)
 
-		startBlock := number - (number % epoch)
-		if startBlock == 0 {
+		// Calculate the block range to scan for signatures
+		// For block N at checkpoint, we reward signers from blocks (N - 2*epoch + 1) to (N - epoch)
+		// At block 1800 (epoch=900): scan blocks 1 to 900
+		rCheckpoint := epoch  // RewardCheckpoint = Epoch in XDC
+		prevCheckpoint := number - (rCheckpoint * 2)
+		startBlock := prevCheckpoint + 1
+		if startBlock < 1 {
 			startBlock = 1
 		}
+		endBlock := startBlock + rCheckpoint - 1
 
-		// Simplified: give each masternode equal weight
-		// In production, this should count actual block signatures
-		for _, mn := range masternodes {
-			signCount[mn] = 1
-		}
+		log.Debug("HookReward scanning blocks", "number", number, "startBlock", startBlock, "endBlock", endBlock)
 
-		// Scan recent blocks to count actual signatures
-		for blockNum := startBlock; blockNum < number; blockNum++ {
+		// Scan blocks to count actual block creators
+		for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
 			blockHeader := chain.GetHeaderByNumber(blockNum)
 			if blockHeader != nil {
 				signer, err := c.RecoverSigner(blockHeader)
-				if err == nil {
+				if err != nil {
+				if blockNum < 10 || blockNum%100 == 0 {
+					log.Debug("RecoverSigner failed", "block", blockNum, "err", err)
+				}
+			} else {
 					signCount[signer]++
 				}
 			}
