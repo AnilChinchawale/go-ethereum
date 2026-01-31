@@ -156,6 +156,7 @@ func ListenV4(c UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv4, error) {
 		log:             cfg.Log,
 	}
 
+	cfg.Log.Info("[DEBUG] ListenV4 NetworkID check", "networkID", cfg.NetworkID)
 	// Enable XDC mode for XDC networks (chain ID 50 = mainnet, 51 = Apothem testnet)
 	if cfg.NetworkID == 50 || cfg.NetworkID == 51 {
 		t.xdcMode = true
@@ -298,6 +299,7 @@ func (t *UDPv4) makePing(toaddr netip.AddrPort) *v4wire.Ping {
 // sendPingXDC sends an XDC-specific ping (type 5) to the given node.
 // XDC nodes use pingXDC instead of standard ping for discovery.
 func (t *UDPv4) sendPingXDC(toid enode.ID, toaddr netip.AddrPort, callback func()) *replyMatcher {
+	t.log.Debug("[DEBUG] Sending pingXDC", "to", toaddr, "toid", toid)
 	req := t.makePingXDC(toaddr)
 	packet, hash, err := v4wire.Encode(t.priv, req)
 	if err != nil {
@@ -588,7 +590,7 @@ func (t *UDPv4) send(toaddr netip.AddrPort, toid enode.ID, req v4wire.Packet) ([
 
 func (t *UDPv4) write(toaddr netip.AddrPort, toid enode.ID, what string, packet []byte) error {
 	_, err := t.conn.WriteToUDPAddrPort(packet, toaddr)
-	t.log.Trace(">> "+what, "id", toid, "addr", toaddr, "err", err)
+	t.log.Debug(">> "+what, "id", toid, "addr", toaddr, "err", err)
 	return err
 }
 
@@ -639,7 +641,7 @@ func (t *UDPv4) handlePacket(from netip.AddrPort, buf []byte) error {
 	if packet.preverify != nil {
 		err = packet.preverify(packet, from, fromID, fromKey)
 	}
-	t.log.Trace("<< "+packet.Name(), "id", fromID, "addr", from, "err", err)
+	t.log.Debug("<< "+packet.Name(), "id", fromID, "addr", from, "err", err)
 	if err == nil && packet.handle != nil {
 		packet.handle(packet, from, fromID, hash)
 	}
@@ -822,6 +824,7 @@ func (t *UDPv4) handlePingXDC(h *packetHandlerV4, from netip.AddrPort, fromID en
 // PONG/v4
 
 func (t *UDPv4) verifyPong(h *packetHandlerV4, from netip.AddrPort, fromID enode.ID, fromKey v4wire.Pubkey) error {
+	t.log.Debug("[DEBUG] verifyPong called", "from", from, "fromID", fromID)
 	req := h.Packet.(*v4wire.Pong)
 
 	if v4wire.Expired(req.Expiration) {

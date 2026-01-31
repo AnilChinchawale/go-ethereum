@@ -806,6 +806,17 @@ func (c *XDPoS) Seal(chain consensus.ChainHeaderReader, block *types.Block, resu
 	}
 	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
 
+	// Double validation: if we are also the validator (M2) for this block,
+	// add our signature to the Validator field
+	m2, err := c.GetValidator(signer, chain, header)
+	if err != nil {
+		log.Debug("Could not get validator for double validation", "err", err)
+		// Continue without double validation for early blocks
+	} else if m2 == signer {
+		// We are both the creator and validator - add signature to Validator field
+		header.Validator = sighash
+	}
+
 	delay := time.Unix(int64(header.Time), 0).Sub(time.Now())
 	if header.Difficulty.Cmp(diffNoTurn) == 0 {
 		wiggle := time.Duration(len(masternodes)/2+1) * wiggleTime

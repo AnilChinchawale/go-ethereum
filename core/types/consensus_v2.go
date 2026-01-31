@@ -13,9 +13,11 @@ import (
 
 // Round number type in XDPoS 2.0
 type Round uint64
+
+// Signature type for BFT messages
 type Signature []byte
 
-// Block Info struct in XDPoS 2.0, used for vote message, etc.
+// BlockInfo contains block metadata for BFT messages
 type BlockInfo struct {
 	Hash   common.Hash `json:"hash"`
 	Round  Round       `json:"round"`
@@ -23,27 +25,30 @@ type BlockInfo struct {
 }
 
 // Vote message in XDPoS 2.0
-type VoteXDPoS struct {
-	signer            common.Address //field not exported
+type Vote struct {
+	signer            common.Address // unexported, set via SetSigner
 	ProposedBlockInfo *BlockInfo     `json:"proposedBlockInfo"`
 	Signature         Signature      `json:"signature"`
 	GapNumber         uint64         `json:"gapNumber"`
 }
 
-func (v *VoteXDPoS) Hash() common.Hash {
+// Hash returns the hash of the vote
+func (v *Vote) Hash() common.Hash {
 	return rlpHash(v)
 }
 
-func (v *VoteXDPoS) PoolKey() string {
-	// return the voted block hash
+// PoolKey returns the key used to group votes in the pool
+func (v *Vote) PoolKey() string {
 	return fmt.Sprint(v.ProposedBlockInfo.Round, ":", v.GapNumber, ":", v.ProposedBlockInfo.Number, ":", v.ProposedBlockInfo.Hash.Hex())
 }
 
-func (v *VoteXDPoS) GetSigner() common.Address {
+// GetSigner returns the signer address
+func (v *Vote) GetSigner() common.Address {
 	return v.signer
 }
 
-func (v *VoteXDPoS) SetSigner(signer common.Address) {
+// SetSigner sets the signer address
+func (v *Vote) SetSigner(signer common.Address) {
 	v.signer = signer
 }
 
@@ -55,55 +60,59 @@ type Timeout struct {
 	GapNumber uint64
 }
 
+// Hash returns the hash of the timeout
 func (t *Timeout) Hash() common.Hash {
 	return rlpHash(t)
 }
 
+// PoolKey returns the key used to group timeouts in the pool
 func (t *Timeout) PoolKey() string {
-	// timeout pool key is round:gapNumber
 	return fmt.Sprint(t.Round, ":", t.GapNumber)
 }
 
+// GetSigner returns the signer address
 func (t *Timeout) GetSigner() common.Address {
 	return t.signer
 }
 
+// SetSigner sets the signer address
 func (t *Timeout) SetSigner(signer common.Address) {
 	t.signer = signer
 }
 
-// BFT Sync Info message in XDPoS 2.0
+// SyncInfo is the BFT sync message containing highest QC and TC
 type SyncInfo struct {
 	HighestQuorumCert  *QuorumCert
 	HighestTimeoutCert *TimeoutCert
 }
 
+// Hash returns the hash of the sync info
 func (s *SyncInfo) Hash() common.Hash {
 	return rlpHash(s)
 }
 
-// Quorum Certificate struct in XDPoS 2.0
+// QuorumCert (QC) represents 2/3 consensus votes
 type QuorumCert struct {
 	ProposedBlockInfo *BlockInfo  `json:"proposedBlockInfo"`
 	Signatures        []Signature `json:"signatures"`
 	GapNumber         uint64      `json:"gapNumber"`
 }
 
-// Timeout Certificate struct in XDPoS 2.0
+// TimeoutCert (TC) represents 2/3 timeout votes
 type TimeoutCert struct {
 	Round      Round
 	Signatures []Signature
 	GapNumber  uint64
 }
 
-// The parsed extra fields in block header in XDPoS 2.0 (excluding the version byte)
-// The version byte (consensus version) is the first byte in header's extra and it's only valid with value >= 2
+// ExtraFields_v2 contains the parsed extra fields in block header for XDPoS 2.0
+// The version byte is the first byte in header's extra (value >= 2)
 type ExtraFields_v2 struct {
 	Round      Round
 	QuorumCert *QuorumCert
 }
 
-// Encode XDPoS 2.0 extra fields into bytes
+// EncodeToBytes encodes the extra fields to bytes with version prefix
 func (e *ExtraFields_v2) EncodeToBytes() ([]byte, error) {
 	bytes, err := rlp.EncodeToBytes(e)
 	if err != nil {
@@ -113,6 +122,7 @@ func (e *ExtraFields_v2) EncodeToBytes() ([]byte, error) {
 	return append(versionByte, bytes...), nil
 }
 
+// EpochSwitchInfo contains information about epoch boundaries
 type EpochSwitchInfo struct {
 	Penalties                  []common.Address
 	Standbynodes               []common.Address
@@ -122,20 +132,24 @@ type EpochSwitchInfo struct {
 	EpochSwitchParentBlockInfo *BlockInfo
 }
 
+// VoteForSign is the structure used to generate vote signatures
 type VoteForSign struct {
 	ProposedBlockInfo *BlockInfo
 	GapNumber         uint64
 }
 
+// VoteSigHash returns the hash used for vote signing
 func VoteSigHash(m *VoteForSign) common.Hash {
 	return rlpHash(m)
 }
 
+// TimeoutForSign is the structure used to generate timeout signatures
 type TimeoutForSign struct {
 	Round     Round
 	GapNumber uint64
 }
 
+// TimeoutSigHash returns the hash used for timeout signing
 func TimeoutSigHash(m *TimeoutForSign) common.Hash {
 	return rlpHash(m)
 }
