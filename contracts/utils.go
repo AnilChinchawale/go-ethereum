@@ -265,21 +265,75 @@ func CalculateRewardForSigner(chainReward *big.Int, signers map[common.Address]*
 	return rewardSigners, nil
 }
 
-// CalculateRewardForHolders calculates rewards for token holders
+// CalculateRewardForHolders calculates rewards for token holders (voters)
+// This distributes rewards to:
+// - Masternode owner: RewardMasterPercent (40%)
+// - Voters: RewardVoterPercent (50%) proportional to their stake
+// - Foundation: RewardFoundationPercent (10%)
 func CalculateRewardForHolders(foundationWalletAddr common.Address, statedb *state.StateDB, signer common.Address, calcReward *big.Int, blockNumber uint64) (map[common.Address]*big.Int, error) {
 	rewards := make(map[common.Address]*big.Int)
-	
-	// Simple distribution: foundation gets foundation percent, signer gets rest
+
+	// Get candidate owner (the masternode operator)
+	owner := state.GetCandidateOwner(statedb, signer)
+	if owner == (common.Address{}) {
+		// If no owner found, default to signer
+		owner = signer
+	}
+
+	// Calculate masternode owner reward (40%)
+	rewardMaster := new(big.Int).Mul(calcReward, big.NewInt(int64(common.RewardMasterPercent)))
+	rewardMaster.Div(rewardMaster, big.NewInt(100))
+	rewards[owner] = rewardMaster
+
+	// Get voters for this masternode
+	voters := state.GetVoters(statedb, signer)
+
+	if len(voters) > 0 {
+		// Calculate total voter reward pool (50%)
+		totalVoterReward := new(big.Int).Mul(calcReward, big.NewInt(int64(common.RewardVoterPercent)))
+		totalVoterReward.Div(totalVoterReward, big.NewInt(100))
+
+		// Calculate total voting capacity
+		totalCap := new(big.Int)
+		voterCaps := make(map[common.Address]*big.Int)
+
+		for _, voteAddr := range voters {
+			// Skip duplicates after TIP2019
+			if _, ok := voterCaps[voteAddr]; ok && common.TIP2019Block.Uint64() <= blockNumber {
+				continue
+			}
+			voterCap := state.GetVoterCap(statedb, signer, voteAddr)
+			totalCap.Add(totalCap, voterCap)
+			voterCaps[voteAddr] = voterCap
+		}
+
+		// Distribute to voters proportionally
+		if totalCap.Cmp(big.NewInt(0)) > 0 {
+			for addr, voteCap := range voterCaps {
+				if voteCap.Cmp(big.NewInt(0)) > 0 {
+					// reward = totalVoterReward * voteCap / totalCap
+					rcap := new(big.Int).Mul(totalVoterReward, voteCap)
+					rcap.Div(rcap, totalCap)
+					if rewards[addr] != nil {
+						rewards[addr].Add(rewards[addr], rcap)
+					} else {
+						rewards[addr] = rcap
+					}
+				}
+			}
+		}
+	}
+
+	// Foundation reward (10%)
 	foundationReward := new(big.Int).Mul(calcReward, big.NewInt(int64(common.RewardFoundationPercent)))
 	foundationReward.Div(foundationReward, big.NewInt(100))
-	
-	signerReward := new(big.Int).Sub(calcReward, foundationReward)
-	
 	if foundationWalletAddr != (common.Address{}) {
 		rewards[foundationWalletAddr] = foundationReward
 	}
-	rewards[signer] = signerReward
-	
+
+	log.Debug("Holders reward calculated", "masternode", signer.Hex(), "owner", owner.Hex(),
+		"masterReward", rewardMaster, "foundationReward", foundationReward, "numVoters", len(voters))
+
 	return rewards, nil
 }
 

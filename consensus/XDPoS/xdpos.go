@@ -1041,6 +1041,11 @@ func (c *XDPoS) CacheSigner(hash common.Hash, txs []*types.Transaction) []*types
 	return signTxs
 }
 
+// GetCachedSigningTxs retrieves cached signing transactions for a block hash
+func (c *XDPoS) GetCachedSigningTxs(hash common.Hash) ([]*types.Transaction, bool) {
+	return c.BlockSigners.Get(hash)
+}
+
 // snapshot retrieves the authorization snapshot at a given point in time.
 func (c *XDPoS) snapshot(chain consensus.ChainHeaderReader, number uint64, hash common.Hash, parents []*types.Header) (*Snapshot, error) {
 	var (
@@ -1211,8 +1216,20 @@ func ExtractValidatorsFromBytes(byteValidators []byte) []int64 {
 }
 
 func isSigningTransaction(tx *types.Transaction) bool {
-	return false // Placeholder - needs XDC contract integration
+	if tx == nil || tx.To() == nil {
+		return false
+	}
+	// Check if transaction is to BlockSigner contract with sign method
+	if *tx.To() == common.BlockSignersBinary && len(tx.Data()) >= 4 {
+		// Check method signature: e341eaa4 is sign(uint256,bytes32)
+		methodSig := common.Bytes2Hex(tx.Data()[:4])
+		if methodSig == common.HexSignMethod {
+			return true
+		}
+	}
+	return false
 }
+
 
 var wiggleTime = 500 * time.Millisecond
 

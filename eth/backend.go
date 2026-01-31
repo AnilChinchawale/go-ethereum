@@ -45,8 +45,10 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	// "github.com/ethereum/go-ethereum/eth/protocols/snap" // Disabled for XDC compatibility
 	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/eth/hooks"
+	"github.com/ethereum/go-ethereum/consensus/XDPoS"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -58,7 +60,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/dnsdisc"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/rlpx"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -134,14 +135,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if !config.SyncMode.IsValid() {
 		return nil, fmt.Errorf("invalid sync mode %d", config.SyncMode)
 	}
-	// For pre-merge networks (XDC - no TerminalTotalDifficulty), force full sync
-	// as snap sync requires snap protocol support which XDC doesn't have
-	if config.Genesis != nil && config.Genesis.Config != nil && config.Genesis.Config.TerminalTotalDifficulty == nil {
-		if config.SyncMode != ethconfig.FullSync {
-			log.Info("Pre-merge network (XDC) detected, forcing full-sync mode")
-			config.SyncMode = ethconfig.FullSync
-		}
-	}
 	if !config.HistoryMode.IsValid() {
 		return nil, fmt.Errorf("invalid history mode %d", config.HistoryMode)
 	}
@@ -199,17 +192,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// Assemble the Ethereum object.
-	p2pServer := stack.Server()
-
-	// Set NetworkID on P2P server for chain-specific discovery (e.g., XDC uses pingXDC)
-	p2pServer.Config.NetworkID = networkID
-
-	// Enable pre-EIP-8 handshake for XDC mainnet (chainID 50) and testnet (51)
-	if networkID == 50 || networkID == 51 {
-		rlpx.UsePreEIP8 = true
-		log.Info("Enabled pre-EIP-8 handshake for XDC compatibility", "networkID", networkID)
-	}
-
 	eth := &Ethereum{
 		config:          config,
 		chainDb:         chainDb,
@@ -218,7 +200,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		engine:          engine,
 		networkID:       networkID,
 		gasPrice:        config.Miner.GasPrice,
-		p2pServer:       p2pServer,
+		p2pServer:       stack.Server(),
 		discmix:         enode.NewFairMix(discmixTimeout),
 		shutdownTracker: shutdowncheck.NewShutdownTracker(chainDb),
 	}
@@ -299,6 +281,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.blockchain, err = core.NewBlockChain(chainDb, config.Genesis, eth.engine, options)
 	if err != nil {
 		return nil, err
+	}
+
+	// Attach XDPoS consensus hooks if using XDPoS engine
+	if xdposEngine, ok := eth.engine.(*XDPoS.XDPoS); ok {
+		log.Info("Attaching XDPoS V2 consensus hooks")
+		hooks.AttachConsensusV2Hooks(xdposEngine, eth.blockchain, chainConfig)
 	}
 
 	// Initialize filtermaps log index.
@@ -454,9 +442,11 @@ func (s *Ethereum) ArchiveMode() bool                  { return s.config.NoPruni
 // network protocols to start.
 func (s *Ethereum) Protocols() []p2p.Protocol {
 	protos := eth.MakeProtocols((*ethHandler)(s.handler), s.networkID, s.discmix)
-	if s.config.SnapshotCache > 0 {
-		protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler))...)
-	}
+	// XDC uses eth/62, eth/63 which are not compatible with snap protocol.
+	// Snap sync requires eth/67+ so we disable it for XDC networks.
+	// if s.config.SnapshotCache > 0 {
+	// 	protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler))...)
+	// }
 	return protos
 }
 
