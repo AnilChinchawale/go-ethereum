@@ -399,6 +399,11 @@ func makeExtraData(extra []byte) []byte {
 func (s *Ethereum) APIs() []rpc.API {
 	apis := ethapi.GetAPIs(s.APIBackend)
 
+	// Append consensus engine APIs (xdpos)
+	if xdposEngine, ok := s.engine.(*XDPoS.XDPoS); ok {
+		apis = append(apis, xdposEngine.APIs(s.blockchain)...)
+	}
+
 	// Append all the local APIs and return
 	return append(apis, []rpc.API{
 		{
