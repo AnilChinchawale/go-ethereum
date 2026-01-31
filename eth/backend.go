@@ -47,6 +47,8 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	// "github.com/ethereum/go-ethereum/eth/protocols/snap" // Disabled for XDC compatibility
 	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/eth/hooks"
+	"github.com/ethereum/go-ethereum/consensus/XDPoS"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -279,6 +281,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.blockchain, err = core.NewBlockChain(chainDb, config.Genesis, eth.engine, options)
 	if err != nil {
 		return nil, err
+	}
+
+	// Attach XDPoS consensus hooks if using XDPoS engine
+	if xdposEngine, ok := eth.engine.(*XDPoS.XDPoS); ok {
+		log.Info("Attaching XDPoS V2 consensus hooks")
+		hooks.AttachConsensusV2Hooks(xdposEngine, eth.blockchain, chainConfig)
 	}
 
 	// Initialize filtermaps log index.
