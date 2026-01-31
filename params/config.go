@@ -209,6 +209,13 @@ var (
 			RewardCheckpoint:    900,                                                                     // Checkpoint for rewards
 			Gap:                 450,                                                                     // Gap blocks before epoch end
 			FoudationWalletAddr: common.HexToAddress("0x746f746f726f0000000000000000000000000000"), // Foundation wallet
+			V2: &XDPoSV2Config{
+				SwitchBlock:          big.NewInt(80370000), // XDPoS 2.0 activates at block 80,370,000
+				MinePeriod:           2,                    // 2 second block time
+				TimeoutPeriod:        30,                   // 30 second timeout
+				TimeoutSyncThreshold: 3,                    // 3 timeouts before sync
+				CertThreshold:        67,                   // 2/3 quorum (67%)
+			},
 		},
 	}
 
@@ -236,6 +243,13 @@ var (
 			RewardCheckpoint:    900,                                                                     // Checkpoint for rewards
 			Gap:                 450,                                                                     // Gap blocks before epoch end
 			FoudationWalletAddr: common.HexToAddress("0x746f746f726f0000000000000000000000000000"), // Foundation wallet
+			V2: &XDPoSV2Config{
+				SwitchBlock:          big.NewInt(73366200), // XDPoS 2.0 activates at block 73,366,200 on testnet
+				MinePeriod:           2,                    // 2 second block time
+				TimeoutPeriod:        30,                   // 30 second timeout
+				TimeoutSyncThreshold: 3,                    // 3 timeouts before sync
+				CertThreshold:        67,                   // 2/3 quorum (67%)
+			},
 		},
 	}
 

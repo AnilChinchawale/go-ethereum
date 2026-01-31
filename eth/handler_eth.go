@@ -110,17 +110,57 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		}()
 		return nil
 
-	// XDPoS2 consensus messages - ignore for now (read-only sync mode)
-	case *eth.VotePacket:
-		// TODO: Forward to XDPoS consensus engine when implemented
+	// XDPoS2 consensus messages
+	case *types.Vote:
+		log.Trace("Received vote message", "peer", peer.ID()[:16], "hash", packet.Hash().Hex())
+		if h.bftHandler != nil {
+			return h.bftHandler.HandleVote(peer, packet)
+		}
 		return nil
 
-	case *eth.TimeoutPacket:
-		// TODO: Forward to XDPoS consensus engine when implemented
+	case *types.Timeout:
+		log.Trace("Received timeout message", "peer", peer.ID()[:16], "hash", packet.Hash().Hex())
+		if h.bftHandler != nil {
+			return h.bftHandler.HandleTimeout(peer, packet)
+		}
 		return nil
 
-	case *eth.SyncInfoPacket:
-		// TODO: Forward to XDPoS consensus engine when implemented
+	case *types.SyncInfo:
+		log.Trace("Received syncInfo message", "peer", peer.ID()[:16], "hash", packet.Hash().Hex())
+		if h.bftHandler != nil {
+			return h.bftHandler.HandleSyncInfo(peer, packet)
+		}
+		return nil
+
+	case *eth.BlockHeadersRequest:
+		// Legacy block headers response (for XDC compatibility)
+		// BlockHeadersRequest is actually headers data despite the name - it's []*types.Header
+		headers := ([]*types.Header)(*packet)
+		log.Info("XDC: Received legacy block headers", "count", len(headers), "peer", peer.ID()[:16])
+		
+		if len(headers) > 0 {
+			if h.xdcSyncer != nil {
+				// Process headers through xdcSyncer which will fetch bodies and import blocks
+				go h.xdcSyncer.processHeaders(peer, headers)
+			} else {
+				log.Warn("XDC: Received headers but xdcSyncer not available")
+			}
+		}
+		return nil
+
+	case *eth.BlockBodiesResponse:
+		// Legacy block bodies response (for XDC compatibility)
+		bodies := ([]*eth.BlockBody)(*packet)
+		log.Info("XDC: Received legacy block bodies", "count", len(bodies), "peer", peer.ID()[:16])
+		
+		if len(bodies) > 0 {
+			if h.xdcSyncer != nil {
+				// Process bodies through xdcSyncer
+				go h.xdcSyncer.processBodies(peer, bodies)
+			} else {
+				log.Warn("XDC: Received bodies but xdcSyncer not available")
+			}
+		}
 		return nil
 
 	default:

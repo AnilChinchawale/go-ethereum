@@ -5,6 +5,7 @@ package eth
 
 import (
 	"math/big"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 const (
 	xdcForceSyncCycle = 10 * time.Second // Interval to force sync attempts
 	xdcMinPeers       = 1                // Minimum peers to start syncing
+	xdcBatchSize      = 64               // Headers per batch
 )
 
 // xdcSyncer manages pre-merge sync for XDC network
@@ -25,14 +27,22 @@ type xdcSyncer struct {
 	syncing    atomic.Bool
 	quitCh     chan struct{}
 	newPeerCh  chan *eth.Peer
+	
+	// Pending responses for legacy protocol (no RequestId matching)
+	pendingHeaders chan []*types.Header
+	pendingBodies  chan []*eth.BlockBody
+	pendingLock    sync.Mutex
+	waitingPeer    *eth.Peer  // The peer we're expecting a response from
 }
 
 // newXDCSyncer creates a new XDC syncer
 func newXDCSyncer(h *handler) *xdcSyncer {
 	return &xdcSyncer{
-		handler:   h,
-		quitCh:    make(chan struct{}),
-		newPeerCh: make(chan *eth.Peer, 10),
+		handler:        h,
+		quitCh:         make(chan struct{}),
+		newPeerCh:      make(chan *eth.Peer, 10),
+		pendingHeaders: make(chan []*types.Header, 1),
+		pendingBodies:  make(chan []*eth.BlockBody, 1),
 	}
 }
 
@@ -144,139 +154,204 @@ func (s *xdcSyncer) synchronise(peer *eth.Peer) {
 		"ourBlock", currentBlock.Number.Uint64(),
 	)
 
-	// Request headers starting from our current head
-	origin := currentBlock.Number.Uint64()
-	if origin > 0 {
-		origin++ // Start from next block
-	}
-
-	// Use the downloader to fetch blocks
-	// For now, request headers directly to test
-	s.requestHeaders(peer, origin)
+	// Start sync loop - keep fetching batches until caught up
+	s.syncLoop(peer)
 }
 
-// requestHeaders requests block headers from a peer
-func (s *xdcSyncer) requestHeaders(peer *eth.Peer, from uint64) {
-	// For XDC, we need to sync from genesis or a checkpoint
-	// Start with a smaller batch to test
-	const batchSize = 64
+// syncLoop continuously fetches headers and bodies until caught up
+func (s *xdcSyncer) syncLoop(peer *eth.Peer) {
+	for {
+		select {
+		case <-s.quitCh:
+			return
+		default:
+		}
 
-	// If starting from 0, try to get recent headers first (skeleton sync approach)
-	// to verify peer is responsive
-	if from == 0 {
-		log.Info("XDC sync: starting from genesis, requesting first batch")
-		from = 1 // Start from block 1, not 0
+		currentBlock := s.handler.chain.CurrentBlock()
+		origin := currentBlock.Number.Uint64() + 1
+		
+		if origin <= 1 {
+			origin = 1 // Start from block 1
+		}
+
+		log.Info("XDC sync: requesting headers batch", "peer", peer.ID()[:8], "from", origin, "count", xdcBatchSize)
+
+		// Set this peer as the one we're waiting for
+		s.pendingLock.Lock()
+		s.waitingPeer = peer
+		// Clear any stale pending responses
+		select {
+		case <-s.pendingHeaders:
+		default:
+		}
+		s.pendingLock.Unlock()
+
+		// Request headers using legacy format (no RequestId)
+		if err := peer.RequestHeadersByNumberLegacy(origin, xdcBatchSize, 0, false); err != nil {
+			log.Error("XDC sync: failed to request headers", "err", err)
+			return
+		}
+
+		// Wait for headers response
+		timeout := time.NewTimer(30 * time.Second)
+		var headers []*types.Header
+		
+		select {
+		case headers = <-s.pendingHeaders:
+			timeout.Stop()
+			log.Info("XDC sync: received headers via channel", "count", len(headers))
+		case <-timeout.C:
+			log.Warn("XDC sync: headers request timed out")
+			return
+		case <-s.quitCh:
+			timeout.Stop()
+			return
+		}
+
+		if len(headers) == 0 {
+			log.Info("XDC sync: no more headers, sync complete")
+			return
+		}
+
+		// Verify headers connect to our chain
+		if headers[0].Number.Uint64() != currentBlock.Number.Uint64()+1 {
+			log.Warn("XDC sync: headers don't connect",
+				"expected", currentBlock.Number.Uint64()+1,
+				"got", headers[0].Number.Uint64(),
+			)
+			return
+		}
+
+		// Request bodies for these headers using legacy format
+		hashes := make([]common.Hash, len(headers))
+		for i, h := range headers {
+			hashes[i] = h.Hash()
+		}
+
+		log.Info("XDC sync: requesting bodies", "count", len(hashes))
+
+		// Clear any stale pending bodies
+		select {
+		case <-s.pendingBodies:
+		default:
+		}
+
+		if err := peer.RequestBodiesLegacy(hashes); err != nil {
+			log.Error("XDC sync: failed to request bodies", "err", err)
+			return
+		}
+
+		// Wait for bodies response
+		timeout = time.NewTimer(30 * time.Second)
+		var bodies []*eth.BlockBody
+
+		select {
+		case bodies = <-s.pendingBodies:
+			timeout.Stop()
+			log.Info("XDC sync: received bodies via channel", "count", len(bodies))
+		case <-timeout.C:
+			log.Warn("XDC sync: bodies request timed out")
+			return
+		case <-s.quitCh:
+			timeout.Stop()
+			return
+		}
+
+		if len(bodies) != len(headers) {
+			log.Error("XDC sync: header/body count mismatch", "headers", len(headers), "bodies", len(bodies))
+			// Try to import what we can (XDC blocks often have empty bodies)
+			for len(bodies) < len(headers) {
+				bodies = append(bodies, &eth.BlockBody{})
+			}
+		}
+
+		// Assemble and import blocks
+		if err := s.importBlocks(headers, bodies); err != nil {
+			log.Error("XDC sync: block import failed", "err", err)
+			return
+		}
+
+		// Continue if we got a full batch
+		if len(headers) < xdcBatchSize {
+			log.Info("XDC sync: received partial batch, sync complete")
+			return
+		}
 	}
-
-	log.Info("XDC sync: requesting headers", "peer", peer.ID()[:8], "from", from, "count", batchSize)
-
-	// Use legacy request format for XDC (eth/62-63 compatible, no RequestId)
-	if err := peer.RequestHeadersByNumberLegacy(from, batchSize, 0, false); err != nil {
-		log.Error("XDC sync: failed to request headers", "err", err)
-		return
-	}
-
-	// Headers will arrive via the message handler
-	// For now, just wait and let the handler process them
-	log.Info("XDC sync: header request sent, waiting for response via handler")
 }
 
-// processHeaders processes received headers and requests bodies
+// processHeaders is called by handler_eth.go when legacy headers arrive
 func (s *xdcSyncer) processHeaders(peer *eth.Peer, headers []*types.Header) {
 	if len(headers) == 0 {
+		log.Debug("XDC sync: received empty headers")
 		return
 	}
 
-	log.Info("XDC sync: processing headers",
+	log.Info("XDC sync: processHeaders called",
 		"count", len(headers),
 		"first", headers[0].Number.Uint64(),
 		"last", headers[len(headers)-1].Number.Uint64(),
+		"peer", peer.ID()[:16],
 	)
 
-	// Verify headers can be connected to our chain
-	currentBlock := s.handler.chain.CurrentBlock()
-	if headers[0].Number.Uint64() != currentBlock.Number.Uint64()+1 {
-		log.Warn("XDC sync: headers don't connect to chain",
-			"expected", currentBlock.Number.Uint64()+1,
-			"got", headers[0].Number.Uint64(),
-		)
-		return
-	}
+	// Check if we're waiting for this
+	s.pendingLock.Lock()
+	waiting := s.waitingPeer
+	s.pendingLock.Unlock()
 
-	// Request block bodies for these headers
-	s.requestBodies(peer, headers)
+	if waiting != nil && waiting.ID() == peer.ID() {
+		// This is the response we're waiting for
+		select {
+		case s.pendingHeaders <- headers:
+			log.Debug("XDC sync: headers queued for processing")
+		default:
+			log.Warn("XDC sync: pendingHeaders channel full, dropping headers")
+		}
+	} else {
+		log.Debug("XDC sync: received unsolicited headers, triggering sync")
+		// Unsolicited headers - trigger sync with this peer
+		go s.synchronise(peer)
+	}
 }
 
-// requestBodies requests block bodies for the given headers
-func (s *xdcSyncer) requestBodies(peer *eth.Peer, headers []*types.Header) {
-	// Collect hashes for body request
-	hashes := make([]common.Hash, len(headers))
-	for i, h := range headers {
-		hashes[i] = h.Hash()
-	}
-
-	log.Info("XDC sync: requesting bodies", "peer", peer.ID()[:8], "count", len(hashes))
-
-	// Create response channel
-	resCh := make(chan *eth.Response, 1)
-
-	// Request bodies
-	req, err := peer.RequestBodies(hashes, resCh)
-	if err != nil {
-		log.Error("XDC sync: failed to request bodies", "err", err)
+// processBodies is called by handler_eth.go when legacy bodies arrive
+func (s *xdcSyncer) processBodies(peer *eth.Peer, bodies []*eth.BlockBody) {
+	if len(bodies) == 0 {
+		log.Debug("XDC sync: received empty bodies")
 		return
 	}
-	defer req.Close()
 
-	// Wait for response
-	timeout := time.NewTimer(30 * time.Second)
-	defer timeout.Stop()
+	log.Info("XDC sync: processBodies called", "count", len(bodies), "peer", peer.ID()[:16])
 
-	select {
-	case res := <-resCh:
-		if res.Res == nil {
-			log.Warn("XDC sync: empty bodies response")
-			res.Done <- nil
-			return
+	// Check if we're waiting for this
+	s.pendingLock.Lock()
+	waiting := s.waitingPeer
+	s.pendingLock.Unlock()
+
+	if waiting != nil && waiting.ID() == peer.ID() {
+		// This is the response we're waiting for
+		select {
+		case s.pendingBodies <- bodies:
+			log.Debug("XDC sync: bodies queued for processing")
+		default:
+			log.Warn("XDC sync: pendingBodies channel full, dropping bodies")
 		}
-
-		bodies, ok := res.Res.(*eth.BlockBodiesResponse)
-		if !ok {
-			log.Error("XDC sync: unexpected bodies response type")
-			res.Done <- nil
-			return
-		}
-
-		log.Info("XDC sync: received bodies", "count", len(*bodies))
-
-		// Assemble and import blocks
-		s.importBlocks(headers, *bodies)
-
-		res.Done <- nil
-
-	case <-timeout.C:
-		log.Warn("XDC sync: bodies request timed out")
-
-	case <-s.quitCh:
-		return
+	} else {
+		log.Debug("XDC sync: received unsolicited bodies, ignoring")
 	}
 }
 
 // importBlocks assembles headers and bodies into full blocks and imports them
-func (s *xdcSyncer) importBlocks(headers []*types.Header, bodies []*eth.BlockBody) {
-	if len(headers) != len(bodies) {
-		log.Error("XDC sync: header/body count mismatch", "headers", len(headers), "bodies", len(bodies))
-		return
-	}
-
+func (s *xdcSyncer) importBlocks(headers []*types.Header, bodies []*eth.BlockBody) error {
 	blocks := make([]*types.Block, len(headers))
 	for i, header := range headers {
-		body := bodies[i]
-		block := types.NewBlockWithHeader(header).WithBody(types.Body{
-			Transactions: body.Transactions,
-			Uncles:       body.Uncles,
-		})
-		blocks[i] = block
+		var body types.Body
+		if i < len(bodies) && bodies[i] != nil {
+			body = types.Body{
+				Transactions: bodies[i].Transactions,
+				Uncles:       bodies[i].Uncles,
+			}
+		}
+		blocks[i] = types.NewBlockWithHeader(header).WithBody(body)
 	}
 
 	log.Info("XDC sync: importing blocks",
@@ -289,12 +364,17 @@ func (s *xdcSyncer) importBlocks(headers []*types.Header, bodies []*eth.BlockBod
 	n, err := s.handler.chain.InsertChain(blocks)
 	if err != nil {
 		log.Error("XDC sync: block import failed", "imported", n, "err", err)
-	} else {
-		log.Info("XDC sync: blocks imported successfully", "count", n)
-		
-		// Mark as synced if we imported blocks
-		if n > 0 {
-			s.handler.synced.Store(true)
-		}
+		return err
 	}
+	
+	log.Info("XDC sync: blocks imported successfully", 
+		"count", n,
+		"head", s.handler.chain.CurrentBlock().Number.Uint64(),
+	)
+	
+	// Mark as synced if we imported blocks
+	if n > 0 {
+		s.handler.synced.Store(true)
+	}
+	return nil
 }

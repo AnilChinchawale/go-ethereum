@@ -19,7 +19,11 @@ var (
 	ErrInvalidQCSignatures = errors.New("invalid QC signatures")
 	ErrInvalidTCSignatures = errors.New("invalid TC signatures")
 	ErrNotReadyToMine      = errors.New("not ready to mine")
+	ErrNotReadyToPropose   = errors.New("not ready to propose")
+	ErrCoinbaseMismatch    = errors.New("coinbase mismatch")
 	ErrUnknownBlock        = errors.New("unknown block")
+	ErrUnknownAncestor     = errors.New("unknown ancestor")
+	ErrFutureBlock         = errors.New("block in the future")
 )
 
 // ErrIncomingMessageRoundNotEqualCurrentRound is returned when message round doesn't match

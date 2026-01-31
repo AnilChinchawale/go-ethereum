@@ -208,17 +208,29 @@ func (req *ENRRequest) Kind() byte   { return ENRRequestPacket }
 func (req *ENRResponse) Name() string { return "ENRRESPONSE/v4" }
 func (req *ENRResponse) Kind() byte   { return ENRResponsePacket }
 
-// PingXDC is the XDC-specific ping packet (type 5).
+// PingXDC is the XDC-specific ping packet (type 5) for XDC network discovery.
 // It has the same structure as Ping but uses a different packet type.
 // XDC nodes send pingXDC instead of standard ping for discovery.
-type PingXDC Ping
+type PingXDC struct {
+	Version    uint
+	From, To   Endpoint
+	Expiration uint64
+	// XDPoSChain does NOT include ENRSeq in ping packets - omit for compatibility.
+	Rest []rlp.RawValue `rlp:"tail"`
+}
 
 func (req *PingXDC) Name() string { return "PINGXDC/v4" }
 func (req *PingXDC) Kind() byte   { return PingXDCPacket }
 
 // ToPing converts PingXDC to a standard Ping for processing.
 func (req *PingXDC) ToPing() *Ping {
-	return (*Ping)(req)
+	return &Ping{
+		Version:    req.Version,
+		From:       req.From,
+		To:         req.To,
+		Expiration: req.Expiration,
+		Rest:       req.Rest,
+	}
 }
 
 // Expired checks whether the given UNIX time stamp is in the past.
@@ -294,6 +306,10 @@ func Encode(priv *ecdsa.PrivateKey, req Packet) (packet, hash []byte, err error)
 	b.WriteByte(req.Kind())
 	if err := rlp.Encode(b, req); err != nil {
 		return nil, nil, err
+	}
+	// DEBUG: Log packet type and RLP payload for XDC packets
+	if req.Kind() == PingXDCPacket {
+		fmt.Printf("[HEX] PingXDC type=%d payload=%x\n", req.Kind(), b.Bytes()[headSize:])
 	}
 	packet = b.Bytes()
 	sig, err := crypto.Sign(crypto.Keccak256(packet[headSize:]), priv)

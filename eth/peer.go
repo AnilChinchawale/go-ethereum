@@ -19,6 +19,7 @@ package eth
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 )
 
@@ -70,4 +71,19 @@ func (p *snapPeer) info() *snapPeerInfo {
 	return &snapPeerInfo{
 		Version: p.Version(),
 	}
+}
+
+// SendVote sends a vote message to the peer
+func (p *ethPeer) SendVote(vote *types.Vote) error {
+	return p.Peer.SendVote(vote)
+}
+
+// SendTimeout sends a timeout message to the peer
+func (p *ethPeer) SendTimeout(timeout *types.Timeout) error {
+	return p.Peer.SendTimeout(timeout)
+}
+
+// SendSyncInfo sends a syncInfo message to the peer
+func (p *ethPeer) SendSyncInfo(syncInfo *types.SyncInfo) error {
+	return p.Peer.SendSyncInfo(syncInfo)
 }

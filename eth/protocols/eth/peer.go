@@ -458,3 +458,18 @@ func (p *Peer) RequestBodiesLegacy(hashes []common.Hash) error {
 	// eth/62-63 format: just the hashes, no RequestId wrapper
 	return p2p.Send(p.rw, GetBlockBodiesMsg, hashes)
 }
+
+// SendVote sends a vote message to the peer (XDPoS2)
+func (p *Peer) SendVote(vote *types.Vote) error {
+	return p2p.Send(p.rw, VoteMsg, vote)
+}
+
+// SendTimeout sends a timeout message to the peer (XDPoS2)
+func (p *Peer) SendTimeout(timeout *types.Timeout) error {
+	return p2p.Send(p.rw, TimeoutMsg, timeout)
+}
+
+// SendSyncInfo sends a syncInfo message to the peer (XDPoS2)
+func (p *Peer) SendSyncInfo(syncInfo *types.SyncInfo) error {
+	return p2p.Send(p.rw, SyncInfoMsg, syncInfo)
+}

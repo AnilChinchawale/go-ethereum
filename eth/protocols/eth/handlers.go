@@ -477,28 +477,11 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 		log.Debug("Legacy BlockBodies decode failed", "version", version, "err", err)
 		return err
 	}
-	log.Debug("Using legacy BlockBodies format", "version", version)
-	metadata := func() interface{} {
-		var (
-			txsHashes        = make([]common.Hash, len(legacyRes))
-			uncleHashes      = make([]common.Hash, len(legacyRes))
-			withdrawalHashes = make([]common.Hash, len(legacyRes))
-		)
-		hasher := trie.NewStackTrie(nil)
-		for i, body := range legacyRes {
-			txsHashes[i] = types.DeriveSha(types.Transactions(body.Transactions), hasher)
-			uncleHashes[i] = types.CalcUncleHash(body.Uncles)
-			if body.Withdrawals != nil {
-				withdrawalHashes[i] = types.DeriveSha(types.Withdrawals(body.Withdrawals), hasher)
-			}
-		}
-		return [][]common.Hash{txsHashes, uncleHashes, withdrawalHashes}
-	}
-	return peer.dispatchResponse(&Response{
-		id:   0,
-		code: BlockBodiesMsg,
-		Res:  &legacyRes,
-	}, metadata)
+	log.Info("XDC: received legacy BlockBodies", "version", version, "count", len(legacyRes))
+	
+	// For XDC legacy sync, pass bodies directly to backend for processing
+	// instead of using dispatcher (which expects RequestId matching)
+	return backend.Handle(peer, &legacyRes)
 }
 
 func handleReceipts[L ReceiptsList](backend Backend, msg Decoder, peer *Peer) error {
@@ -679,24 +662,39 @@ func handleNodeData(backend Backend, msg Decoder, peer *Peer) error {
 
 // XDPoS2 consensus message handlers
 
+
 // handleVoteMsg handles XDPoS2 vote messages
-// During sync, we simply ignore these consensus messages
 func handleVoteMsg(backend Backend, msg Decoder, peer *Peer) error {
-	// XDPoS2 consensus messages are complex structures
-	// During sync, we ignore them - just discard the message
-	return nil
+	// Decode the vote message
+	var vote types.Vote
+	if err := msg.Decode(&vote); err != nil {
+		return fmt.Errorf("failed to decode Vote message: %v", err)
+	}
+	
+	// Pass to backend for BFT processing
+	return backend.Handle(peer, &vote)
 }
 
-// handleTimeoutMsg handles XDPoS2 timeout messages  
-// During sync, we simply ignore these consensus messages
+// handleTimeoutMsg handles XDPoS2 timeout messages
 func handleTimeoutMsg(backend Backend, msg Decoder, peer *Peer) error {
-	// During sync, we ignore consensus messages
-	return nil
+	// Decode the timeout message
+	var timeout types.Timeout
+	if err := msg.Decode(&timeout); err != nil {
+		return fmt.Errorf("failed to decode Timeout message: %v", err)
+	}
+	
+	// Pass to backend for BFT processing
+	return backend.Handle(peer, &timeout)
 }
 
 // handleSyncInfoMsg handles XDPoS2 sync info messages
-// During sync, we simply ignore these consensus messages
 func handleSyncInfoMsg(backend Backend, msg Decoder, peer *Peer) error {
-	// During sync, we ignore consensus messages
-	return nil
+	// Decode the syncInfo message
+	var syncInfo types.SyncInfo
+	if err := msg.Decode(&syncInfo); err != nil {
+		return fmt.Errorf("failed to decode SyncInfo message: %v", err)
+	}
+	
+	// Pass to backend for BFT processing
+	return backend.Handle(peer, &syncInfo)
 }

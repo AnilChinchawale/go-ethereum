@@ -136,6 +136,9 @@ type handler struct {
 	// XDC pre-merge syncer
 	xdcSyncer *xdcSyncer
 
+	// XDPoS2 BFT message handler
+	bftHandler *bftHandler
+
 	// channels for fetcher, syncer, txsyncLoop
 	quitSync chan struct{}
 
@@ -197,6 +200,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 
 	// Initialize XDC pre-merge syncer
 	h.xdcSyncer = newXDCSyncer(h)
+
+	// Initialize BFT message handler
+	h.bftHandler = newBFTHandler(h)
 
 	return h, nil
 }
@@ -443,6 +449,11 @@ func (h *handler) Start(maxPeers int) {
 	// Start XDC pre-merge syncer
 	if h.xdcSyncer != nil {
 		h.xdcSyncer.start()
+
+	// Start BFT message handler
+	if h.bftHandler != nil {
+		h.bftHandler.Start()
+	}
 	}
 
 	// start peer handler tracker
@@ -500,6 +511,11 @@ func (h *handler) Stop() {
 	// Stop XDC syncer
 	if h.xdcSyncer != nil {
 		h.xdcSyncer.stop()
+
+	// Stop BFT message handler
+	if h.bftHandler != nil {
+		h.bftHandler.Stop()
+	}
 	}
 
 	// Quit chainSync and txsync64.

@@ -153,3 +153,23 @@ type TimeoutForSign struct {
 func TimeoutSigHash(m *TimeoutForSign) common.Hash {
 	return rlpHash(m)
 }
+
+// Implement eth.Packet interface for BFT messages
+
+// Name returns the packet name for Vote
+func (*Vote) Name() string { return "Vote" }
+
+// Kind returns the message type for Vote
+func (*Vote) Kind() byte { return 0xe0 } // VoteMsg
+
+// Name returns the packet name for Timeout
+func (*Timeout) Name() string { return "Timeout" }
+
+// Kind returns the message type for Timeout
+func (*Timeout) Kind() byte { return 0xe1 } // TimeoutMsg
+
+// Name returns the packet name for SyncInfo
+func (*SyncInfo) Name() string { return "SyncInfo" }
+
+// Kind returns the message type for SyncInfo
+func (*SyncInfo) Kind() byte { return 0xe2 } // SyncInfoMsg

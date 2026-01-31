@@ -323,12 +323,12 @@ func (t *UDPv4) sendPingXDC(toid enode.ID, toaddr netip.AddrPort, callback func(
 }
 
 func (t *UDPv4) makePingXDC(toaddr netip.AddrPort) *v4wire.PingXDC {
+	// XDPoSChain ping format does NOT include ENRSeq - must match exactly for compatibility.
 	return &v4wire.PingXDC{
 		Version:    4,
 		From:       t.ourEndpoint(),
 		To:         v4wire.NewEndpoint(toaddr, 0),
 		Expiration: uint64(time.Now().Add(expiration).Unix()),
-		ENRSeq:     t.localNode.Node().Seq(),
 	}
 }
 
@@ -627,6 +627,7 @@ func (t *UDPv4) readLoop(unhandled chan<- ReadPacket) {
 }
 
 func (t *UDPv4) handlePacket(from netip.AddrPort, buf []byte) error {
+	t.log.Debug("[RAW] Got UDP to v4", "from", from, "len", len(buf))
 	// Unwrap IPv4-in-6 source address.
 	if from.Addr().Is4In6() {
 		from = netip.AddrPortFrom(netip.AddrFrom4(from.Addr().As4()), from.Port())
