@@ -355,6 +355,13 @@ const (
 	shaLen = 32                     // hash length (for nonce etc)
 
 	eciesOverhead = 65 /* pubkey */ + 16 /* IV */ + 32 /* MAC */
+
+	// Pre-EIP-8 handshake message sizes
+	authMsgLen  = sigLen + shaLen + pubLen + shaLen + 1
+	authRespLen = pubLen + shaLen + 1
+
+	encAuthMsgLen  = authMsgLen + eciesOverhead  // size of encrypted pre-EIP-8 initiator handshake
+	encAuthRespLen = authRespLen + eciesOverhead // size of encrypted pre-EIP-8 handshake reply
 )
 
 var (
@@ -388,6 +395,8 @@ type handshakeState struct {
 
 // RLPx v4 handshake auth (defined in EIP-8).
 type authMsgV4 struct {
+	gotPlain bool // whether read packet had plain format (pre-EIP-8)
+
 	Signature       [sigLen]byte
 	InitiatorPubkey [pubLen]byte
 	Nonce           [shaLen]byte
@@ -397,14 +406,39 @@ type authMsgV4 struct {
 	Rest []rlp.RawValue `rlp:"tail"`
 }
 
+// decodePlain decodes a pre-EIP-8 auth message.
+func (msg *authMsgV4) decodePlain(input []byte) {
+	n := copy(msg.Signature[:], input)
+	n += shaLen // skip sha3(initiator-ephemeral-pubk)
+	n += copy(msg.InitiatorPubkey[:], input[n:])
+	copy(msg.Nonce[:], input[n:])
+	msg.Version = 4
+	msg.gotPlain = true
+}
+
 // RLPx v4 handshake response (defined in EIP-8).
 type authRespV4 struct {
+	gotPlain bool // whether read packet had plain format (pre-EIP-8)
+
 	RandomPubkey [pubLen]byte
 	Nonce        [shaLen]byte
 	Version      uint
 
 	// Ignore additional fields (forward-compatibility)
 	Rest []rlp.RawValue `rlp:"tail"`
+}
+
+// decodePlain decodes a pre-EIP-8 auth response message.
+func (msg *authRespV4) decodePlain(input []byte) {
+	n := copy(msg.RandomPubkey[:], input)
+	copy(msg.Nonce[:], input[n:])
+	msg.Version = 4
+	msg.gotPlain = true
+}
+
+// plainDecoder is implemented by handshake messages that support pre-EIP-8 format.
+type plainDecoder interface {
+	decodePlain([]byte)
 }
 
 // runRecipient negotiates a session token on conn.
@@ -519,7 +553,14 @@ func (h *handshakeState) runInitiator(conn io.ReadWriter, prv *ecdsa.PrivateKey,
 	if err != nil {
 		return s, err
 	}
-	authPacket, err := h.sealEIP8(authMsg)
+
+	// Use pre-EIP-8 format for XDC compatibility
+	var authPacket []byte
+	if UsePreEIP8 {
+		authPacket, err = h.sealPlain(authMsg)
+	} else {
+		authPacket, err = h.sealEIP8(authMsg)
+	}
 	if err != nil {
 		return s, err
 	}
@@ -594,36 +635,79 @@ func (h *handshakeState) makeAuthResp() (msg *authRespV4, err error) {
 }
 
 // readMsg reads an encrypted handshake message, decoding it into msg.
+// It supports both pre-EIP-8 (plain) format and EIP-8 format.
 func (h *handshakeState) readMsg(msg interface{}, prv *ecdsa.PrivateKey, r io.Reader) ([]byte, error) {
 	h.rbuf.reset()
 	h.rbuf.grow(512)
 
-	// Read the size prefix.
-	prefix, err := h.rbuf.read(r, 2)
+	// Determine the expected plain size based on message type
+	plainSize := encAuthMsgLen
+	if _, ok := msg.(*authRespV4); ok {
+		plainSize = encAuthRespLen
+	}
+
+	// Read enough bytes to cover pre-EIP-8 format
+	buf, err := h.rbuf.read(r, plainSize)
 	if err != nil {
 		return nil, err
 	}
+
+	// Attempt decoding pre-EIP-8 "plain" format first
+	key := ecies.ImportECDSA(prv)
+	if dec, err := key.Decrypt(buf, nil, nil); err == nil {
+		// Successfully decrypted as pre-EIP-8
+		if pd, ok := msg.(plainDecoder); ok {
+			pd.decodePlain(dec)
+			return buf, nil
+		}
+	}
+
+	// Could be EIP-8 format, try that
+	prefix := buf[:2]
 	size := binary.BigEndian.Uint16(prefix)
-
-	// baseProtocolMaxMsgSize = 2 * 1024
-	if size > 2048 {
-		return nil, errors.New("message too big")
+	if size < uint16(plainSize) {
+		return buf, fmt.Errorf("size underflow, need at least %d bytes", plainSize)
 	}
 
-	// Read the handshake packet.
-	packet, err := h.rbuf.read(r, int(size))
+	// Read remaining bytes for EIP-8 format
+	remaining := int(size) - plainSize + 2
+	if remaining > 0 {
+		extra, err := h.rbuf.read(r, remaining)
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, extra...)
+	}
+
+	// Decrypt as EIP-8
+	dec, err := key.Decrypt(buf[2:], nil, prefix)
 	if err != nil {
 		return nil, err
 	}
-	dec, err := ecies.ImportECDSA(prv).Decrypt(packet, nil, prefix)
-	if err != nil {
-		return nil, err
-	}
+
 	// Can't use rlp.DecodeBytes here because it rejects
 	// trailing data (forward-compatibility).
 	s := rlp.NewStream(bytes.NewReader(dec), 0)
 	err = s.Decode(msg)
-	return h.rbuf.data[:len(prefix)+len(packet)], err
+	return buf, err
+}
+
+// UsePreEIP8 enables pre-EIP-8 handshake format for compatibility with older nodes (like XDC)
+var UsePreEIP8 = false
+
+// sealPlain encrypts a handshake message in pre-EIP-8 format.
+// This is needed for compatibility with XDC nodes that don't support EIP-8.
+func (h *handshakeState) sealPlain(msg *authMsgV4) ([]byte, error) {
+	// Pre-EIP-8 format: raw encrypted message without size prefix
+	// Format: signature (65) + keccak256(ephemeral-pubkey) (32) + initiator-pubkey (64) + nonce (32) + token-flag (1) = 194 bytes
+	buf := make([]byte, 194)
+	n := copy(buf, msg.Signature[:])
+	n += copy(buf[n:], crypto.Keccak256(exportPubkey(&h.randomPrivKey.PublicKey)))
+	n += copy(buf[n:], msg.InitiatorPubkey[:])
+	n += copy(buf[n:], msg.Nonce[:])
+	buf[n] = 0 // token-flag
+
+	return ecies.Encrypt(rand.Reader, h.remote, buf, nil, nil)
 }
 
 // sealEIP8 encrypts a handshake message.

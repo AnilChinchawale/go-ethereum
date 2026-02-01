@@ -45,8 +45,10 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	// "github.com/ethereum/go-ethereum/eth/protocols/snap" // Disabled for XDC compatibility
 	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/eth/hooks"
+	"github.com/ethereum/go-ethereum/consensus/XDPoS"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -281,6 +283,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 
+	// Attach XDPoS consensus hooks if using XDPoS engine
+	if xdposEngine, ok := eth.engine.(*XDPoS.XDPoS); ok {
+		log.Info("Attaching XDPoS V2 consensus hooks")
+		hooks.AttachConsensusV2Hooks(xdposEngine, eth.blockchain, chainConfig)
+	}
+
 	// Initialize filtermaps log index.
 	fmConfig := filtermaps.Config{
 		History:        config.LogHistory,
@@ -391,6 +399,12 @@ func makeExtraData(extra []byte) []byte {
 func (s *Ethereum) APIs() []rpc.API {
 	apis := ethapi.GetAPIs(s.APIBackend)
 
+
+	// Append consensus engine APIs (xdpos)
+	if xdposEngine, ok := s.engine.(*XDPoS.XDPoS); ok {
+		apis = append(apis, xdposEngine.APIs(s.blockchain)...)
+	}
+
 	// Append all the local APIs and return
 	return append(apis, []rpc.API{
 		{
@@ -434,9 +448,11 @@ func (s *Ethereum) ArchiveMode() bool                  { return s.config.NoPruni
 // network protocols to start.
 func (s *Ethereum) Protocols() []p2p.Protocol {
 	protos := eth.MakeProtocols((*ethHandler)(s.handler), s.networkID, s.discmix)
-	if s.config.SnapshotCache > 0 {
-		protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler))...)
-	}
+	// XDC uses eth/62, eth/63 which are not compatible with snap protocol.
+	// Snap sync requires eth/67+ so we disable it for XDC networks.
+	// if s.config.SnapshotCache > 0 {
+	// 	protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler))...)
+	// }
 	return protos
 }
 

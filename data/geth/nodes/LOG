@@ -1,0 +1,61 @@
+=============== Jan 30, 2026 (CET) ===============
+19:20:38.151550 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+19:20:38.182753 db@open opening
+19:20:38.183610 version@stat F·[] S·0B[] Sc·[]
+19:20:38.199080 db@janitor F·2 G·0
+19:20:38.199087 db@open done T·16.328069ms
+19:20:40.208915 db@close closing
+19:20:40.209107 db@close done T·172.784µs
+=============== Jan 30, 2026 (CET) ===============
+19:21:09.319680 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+19:21:09.319770 version@stat F·[] S·0B[] Sc·[]
+19:21:09.319785 db@open opening
+19:21:09.319811 journal@recovery F·1
+19:21:09.320040 journal@recovery recovering @1
+19:21:09.327929 memdb@flush created L0@2 N·6 S·326B "loc..seq,v2":"version,v1"
+19:21:09.329421 version@stat F·[1] S·326B[326B] Sc·[0.25]
+19:21:09.362273 db@janitor F·3 G·0
+19:21:09.362281 db@open done T·42.492515ms
+19:21:11.370680 db@close closing
+19:21:11.370869 db@close done T·174.951µs
+=============== Jan 30, 2026 (CET) ===============
+19:21:38.368598 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+19:21:38.368663 version@stat F·[1] S·326B[326B] Sc·[0.25]
+19:21:38.368669 db@open opening
+19:21:38.368685 journal@recovery F·1
+19:21:38.369560 journal@recovery recovering @3
+19:21:38.377470 memdb@flush created L0@5 N·3 S·294B "loc..seq,v8":"n:\xaa..ail,v10"
+19:21:38.381087 version@stat F·[2] S·620B[620B] Sc·[0.50]
+19:21:38.420802 db@janitor F·4 G·0
+19:21:38.420813 db@open done T·52.140202ms
+19:23:12.271827 db@close closing
+19:23:12.271856 db@close done T·28.141µs
+=============== Jan 30, 2026 (CET) ===============
+19:23:56.890606 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+19:23:56.890714 version@stat F·[2] S·620B[620B] Sc·[0.50]
+19:23:56.890730 db@open opening
+19:23:56.890763 journal@recovery F·1
+19:23:56.891003 journal@recovery recovering @6
+19:23:56.899306 memdb@flush created L0@8 N·58 S·709B "loc..seq,v12":"n:\xaa..ail,v14"
+19:23:56.901344 version@stat F·[3] S·1KiB[1KiB] Sc·[0.75]
+19:23:56.932624 db@janitor F·5 G·0
+19:23:56.932632 db@open done T·41.898229ms
+19:26:16.729292 db@close closing
+19:26:16.729446 db@close done T·150.802µs
+=============== Jan 30, 2026 (CET) ===============
+19:26:39.329431 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+19:26:39.329607 version@stat F·[3] S·1KiB[1KiB] Sc·[0.75]
+19:26:39.329625 db@open opening
+19:26:39.329657 journal@recovery F·1
+19:26:39.330494 journal@recovery recovering @9
+19:26:39.339300 memdb@flush created L0@11 N·169 S·1KiB "loc..seq,v71":"n:\xaa..ail,v74"
+19:26:39.339552 version@stat F·[4] S·2KiB[2KiB] Sc·[1.00]
+19:26:39.379224 db@janitor F·6 G·0
+19:26:39.379236 db@open done T·49.60661ms
+19:26:39.379309 table@compaction L0·4 -> L1·0 S·2KiB Q·240
+19:26:39.388099 table@build created L1@14 N·5 S·367B "loc..seq,v71":"version,v1"
+19:26:39.388298 version@stat F·[0 1] S·367B[0B 367B] Sc·[0.00 0.00]
+19:26:39.396373 table@compaction committed F-3 S-2KiB Ke·0 D·231 T·17.04998ms
+19:26:39.396438 table@remove removed @8
+19:26:39.396466 table@remove removed @5
+19:26:39.396488 table@remove removed @2

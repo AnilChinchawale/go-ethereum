@@ -41,9 +41,19 @@ const (
 	PongPacket
 	FindnodePacket
 	NeighborsPacket
-	ENRRequestPacket
+ENRRequestPacket
 	ENRResponsePacket
+
+	// XDC-specific packet types
+	PingXDCPacket = 5 // XDC uses type 5 for ping instead of standard type 1
 )
+
+// XDC uses packet type 5 for ping instead of type 1.
+// When UseXDCPing is true:
+// - Outgoing pings use type 5 (ENRRequestPacket slot)
+// - Incoming type 5 packets are decoded as Ping (not ENRRequest)
+// XDC mainnet nodes only understand pingXDC (type 5).
+var UseXDCPing = true
 
 // RPC request structures
 type (
@@ -169,8 +179,19 @@ type Packet interface {
 	Kind() byte
 }
 
-func (req *Ping) Name() string { return "PING/v4" }
-func (req *Ping) Kind() byte   { return PingPacket }
+func (req *Ping) Name() string {
+	if UseXDCPing {
+		return "PING XDC/v4"
+	}
+	return "PING/v4"
+}
+func (req *Ping) Kind() byte {
+	if UseXDCPing {
+		// XDC uses packet type 5 for ping
+		return ENRRequestPacket
+	}
+	return PingPacket
+}
 
 func (req *Pong) Name() string { return "PONG/v4" }
 func (req *Pong) Kind() byte   { return PongPacket }
@@ -186,6 +207,31 @@ func (req *ENRRequest) Kind() byte   { return ENRRequestPacket }
 
 func (req *ENRResponse) Name() string { return "ENRRESPONSE/v4" }
 func (req *ENRResponse) Kind() byte   { return ENRResponsePacket }
+
+// PingXDC is the XDC-specific ping packet (type 5) for XDC network discovery.
+// It has the same structure as Ping but uses a different packet type.
+// XDC nodes send pingXDC instead of standard ping for discovery.
+type PingXDC struct {
+	Version    uint
+	From, To   Endpoint
+	Expiration uint64
+	// XDPoSChain does NOT include ENRSeq in ping packets - omit for compatibility.
+	Rest []rlp.RawValue `rlp:"tail"`
+}
+
+func (req *PingXDC) Name() string { return "PINGXDC/v4" }
+func (req *PingXDC) Kind() byte   { return PingXDCPacket }
+
+// ToPing converts PingXDC to a standard Ping for processing.
+func (req *PingXDC) ToPing() *Ping {
+	return &Ping{
+		Version:    req.Version,
+		From:       req.From,
+		To:         req.To,
+		Expiration: req.Expiration,
+		Rest:       req.Rest,
+	}
+}
 
 // Expired checks whether the given UNIX time stamp is in the past.
 func Expired(ts uint64) bool {
@@ -233,8 +279,14 @@ func Decode(input []byte) (Packet, Pubkey, []byte, error) {
 		req = new(Findnode)
 	case NeighborsPacket:
 		req = new(Neighbors)
-	case ENRRequestPacket:
-		req = new(ENRRequest)
+case ENRRequestPacket: // Also PingXDCPacket (5) for XDC
+		// XDC uses type 5 for ping, but also used for ENRRequest in standard Ethereum
+		// For XDC networks, decode as Ping
+		if UseXDCPing {
+			req = new(Ping)
+		} else {
+			req = new(ENRRequest)
+		}
 	case ENRResponsePacket:
 		req = new(ENRResponse)
 	default:
@@ -254,6 +306,10 @@ func Encode(priv *ecdsa.PrivateKey, req Packet) (packet, hash []byte, err error)
 	b.WriteByte(req.Kind())
 	if err := rlp.Encode(b, req); err != nil {
 		return nil, nil, err
+	}
+	// DEBUG: Log packet type and RLP payload for XDC packets
+	if req.Kind() == PingXDCPacket {
+		fmt.Printf("[HEX] PingXDC type=%d payload=%x\n", req.Kind(), b.Bytes()[headSize:])
 	}
 	packet = b.Bytes()
 	sig, err := crypto.Sign(crypto.Keccak256(packet[headSize:]), priv)

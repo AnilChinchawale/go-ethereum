@@ -1,0 +1,19 @@
+[Eth]
+NetworkId = 50
+SyncMode = "full"
+
+[Node]
+DataDir = "/root/xdpos-part4/data"
+
+[Node.P2P]
+MaxPeers = 50
+NoDiscovery = true
+DiscoveryV4 = false
+DiscoveryV5 = false
+ListenAddr = ":30304"
+StaticNodes = [
+  "enode://91e59fa1b034ae35e9f4e8a99cc6621f09d74e76a6220abb6c93b29ed41a9e1fc4e5b70e2c5fc43f883cffbdcd6f4f6cbc1d23af077f28c2aecc22403355d4b1@81.0.220.137:30303",
+  "enode://91e59fa1b034ae35e9f4e8a99cc6621f09d74e76a6220abb6c93b29ed41a9e1fc4e5b70e2c5fc43f883cffbdcd6f4f6cbc1d23af077f28c2aecc22403355d4b1@173.212.216.152:30303",
+  "enode://91e59fa1b034ae35e9f4e8a99cc6621f09d74e76a6220abb6c93b29ed41a9e1fc4e5b70e2c5fc43f883cffbdcd6f4f6cbc1d23af077f28c2aecc22403355d4b1@135.181.182.73:30303",
+  "enode://91e59fa1b034ae35e9f4e8a99cc6621f09d74e76a6220abb6c93b29ed41a9e1fc4e5b70e2c5fc43f883cffbdcd6f4f6cbc1d23af077f28c2aecc22403355d4b1@86.48.31.133:30303"
+]

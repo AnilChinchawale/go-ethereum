@@ -133,6 +133,12 @@ type handler struct {
 
 	requiredBlocks map[uint64]common.Hash
 
+	// XDC pre-merge syncer
+	xdcSyncer *xdcSyncer
+
+	// XDPoS2 BFT message handler
+	bftHandler *bftHandler
+
 	// channels for fetcher, syncer, txsyncLoop
 	quitSync chan struct{}
 
@@ -191,6 +197,13 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 
 	h.txFetcher = fetcher.NewTxFetcher(validateMeta, addTxs, fetchTx, h.removePeer)
+
+	// Initialize XDC pre-merge syncer
+	h.xdcSyncer = newXDCSyncer(h)
+
+	// Initialize BFT message handler
+	h.bftHandler = newBFTHandler(h)
+
 	return h, nil
 }
 
@@ -295,6 +308,11 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// Propagate existing transactions. new transactions appearing
 	// after this will be sent via broadcasts.
 	h.syncTransactions(peer)
+
+	// Notify XDC syncer about new peer
+	if h.xdcSyncer != nil {
+		h.xdcSyncer.notifyPeer(peer)
+	}
 
 	// Create a notification channel for pending requests if the peer goes down
 	dead := make(chan struct{})
@@ -428,9 +446,60 @@ func (h *handler) Start(maxPeers int) {
 	// start sync handlers
 	h.txFetcher.Start()
 
+	// Start XDC pre-merge syncer
+	if h.xdcSyncer != nil {
+		h.xdcSyncer.start()
+
+	// Start BFT message handler
+	if h.bftHandler != nil {
+		h.bftHandler.Start()
+	}
+	}
+
 	// start peer handler tracker
 	h.wg.Add(1)
 	go h.protoTracker()
+
+	// start legacy syncer for pre-merge networks (XDC)
+	h.wg.Add(1)
+	go h.legacySyncer()
+}
+
+// legacySyncer periodically synchronizes with the network for pre-merge networks like XDC.
+func (h *handler) legacySyncer() {
+	defer h.wg.Done()
+
+	// Initial sync after a short delay to let peers connect
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+
+	forceSync := make(chan struct{}, 1)
+	for {
+		select {
+		case <-timer.C:
+			// Periodic sync attempt
+			if h.peers.len() > 0 {
+				go h.doLegacySync()
+			}
+			timer.Reset(10 * time.Second)
+
+		case <-forceSync:
+			// Forced sync (e.g., from new block announcement)
+			if h.peers.len() > 0 {
+				go h.doLegacySync()
+			}
+
+		case <-h.quitSync:
+			return
+		}
+	}
+}
+
+// doLegacySync triggers a synchronization with the downloader.
+func (h *handler) doLegacySync() {
+	if err := h.downloader.LegacySync(); err != nil {
+		log.Debug("Legacy sync failed", "err", err)
+	}
 }
 
 func (h *handler) Stop() {
@@ -438,6 +507,16 @@ func (h *handler) Stop() {
 	h.blockRange.stop()
 	h.txFetcher.Stop()
 	h.downloader.Terminate()
+
+	// Stop XDC syncer
+	if h.xdcSyncer != nil {
+		h.xdcSyncer.stop()
+
+	// Stop BFT message handler
+	if h.bftHandler != nil {
+		h.bftHandler.Stop()
+	}
+	}
 
 	// Quit chainSync and txsync64.
 	// After this is done, no new peers will be accepted.

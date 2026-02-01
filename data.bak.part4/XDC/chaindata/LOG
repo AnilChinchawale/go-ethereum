@@ -1,0 +1,70 @@
+=============== Jan 29, 2026 (CET) ===============
+07:59:50.204474 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+07:59:50.228659 db@open opening
+07:59:50.229364 version@stat F·[] S·0B[] Sc·[]
+07:59:50.245602 db@janitor F·2 G·0
+07:59:50.245631 db@open done T·16.958756ms
+=============== Jan 29, 2026 (CET) ===============
+08:00:41.336866 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:00:41.337125 version@stat F·[] S·0B[] Sc·[]
+08:00:41.337195 db@open opening
+08:00:41.337302 journal@recovery F·1
+08:00:41.338298 journal@recovery recovering @1
+08:00:41.348884 memdb@flush created L0@2 N·139 S·24KiB "\x01\xf8\xa1..C[8,v125":"\xf5\x93\xfd..\xcc\xe8\xee,v108"
+08:00:41.349577 version@stat F·[1] S·24KiB[24KiB] Sc·[0.25]
+08:00:41.389347 db@janitor F·3 G·0
+08:00:41.389367 db@open done T·52.155497ms
+=============== Jan 29, 2026 (CET) ===============
+08:01:39.849445 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:01:39.849485 version@stat F·[1] S·24KiB[24KiB] Sc·[0.25]
+08:01:39.849489 db@open opening
+08:01:39.849503 journal@recovery F·1
+08:01:39.849702 journal@recovery recovering @3
+08:01:39.857968 memdb@flush created L0@5 N·3 S·765B "Blo..ion,v142":"eth..Bֱ,v141"
+08:01:39.858091 version@stat F·[2] S·25KiB[25KiB] Sc·[0.50]
+08:01:39.897583 db@janitor F·4 G·0
+08:01:39.897590 db@open done T·48.099581ms
+=============== Jan 29, 2026 (CET) ===============
+08:03:09.975021 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:03:09.975107 version@stat F·[2] S·25KiB[25KiB] Sc·[0.50]
+08:03:09.975121 db@open opening
+08:03:09.975151 journal@recovery F·1
+08:03:09.975497 journal@recovery recovering @6
+08:03:09.983741 memdb@flush created L0@8 N·3 S·765B "Blo..ion,v146":"eth..Bֱ,v145"
+08:03:09.983868 version@stat F·[3] S·25KiB[25KiB] Sc·[0.75]
+08:03:10.016356 db@janitor F·5 G·0
+08:03:10.016370 db@open done T·41.243804ms
+08:07:17.130999 db@close closing
+08:07:17.131042 db@close done T·42.442µs
+=============== Jan 29, 2026 (CET) ===============
+08:07:19.219872 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:07:19.219931 version@stat F·[3] S·25KiB[25KiB] Sc·[0.75]
+08:07:19.219937 db@open opening
+08:07:19.219952 journal@recovery F·1
+08:07:19.220252 journal@recovery recovering @9
+08:07:19.228602 memdb@flush created L0@11 N·4 S·1KiB "Blo..ion,v150":"eth..Bֱ,v149"
+08:07:19.228805 version@stat F·[4] S·26KiB[26KiB] Sc·[1.00]
+08:07:19.260811 db@janitor F·6 G·0
+08:07:19.260863 db@open done T·40.917801ms
+08:07:19.260957 table@compaction L0·4 -> L1·0 S·26KiB Q·153
+08:07:19.271575 table@build created L1@14 N·136 S·21KiB "\x01\xf8\xa1..C[8,v125":"\xf5\x93\xfd..\xcc\xe8\xee,v108"
+08:07:19.271670 version@stat F·[0 1] S·21KiB[0B 21KiB] Sc·[0.00 0.00]
+08:07:19.279940 table@compaction committed F-3 S-5KiB Ke·0 D·13 T·18.909206ms
+08:07:19.280220 table@remove removed @8
+08:07:19.280326 table@remove removed @5
+08:07:19.280429 table@remove removed @2
+08:09:39.817643 db@close closing
+08:09:39.817680 db@close done T·36.204µs
+=============== Jan 29, 2026 (CET) ===============
+08:09:56.998581 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+08:09:56.998800 version@stat F·[0 1] S·21KiB[0B 21KiB] Sc·[0.00 0.00]
+08:09:56.998830 db@open opening
+08:09:56.998906 journal@recovery F·1
+08:09:56.999746 journal@recovery recovering @12
+08:09:57.009519 memdb@flush created L0@15 N·4 S·1KiB "Blo..ion,v155":"eth..Bֱ,v154"
+08:09:57.010388 version@stat F·[1 1] S·22KiB[1KiB 21KiB] Sc·[0.25 0.00]
+08:09:57.050715 db@janitor F·5 G·1
+08:09:57.050746 db@janitor removing table-11
+08:09:57.050866 db@open done T·52.024189ms
+08:12:03.459449 db@close closing
+08:12:03.459506 db@close done T·55.999µs

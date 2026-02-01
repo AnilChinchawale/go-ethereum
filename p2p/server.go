@@ -467,6 +467,7 @@ func (srv *Server) setupDiscovery() error {
 	}
 
 	// Start discovery services.
+	srv.log.Info("[DEBUG] setupDiscovery", "srv.NetworkID", srv.NetworkID, "srv.Config.NetworkID", srv.Config.NetworkID)
 	if srv.Config.DiscoveryV4 {
 		cfg := discover.Config{
 			PrivateKey:  srv.PrivateKey,
@@ -474,6 +475,7 @@ func (srv *Server) setupDiscovery() error {
 			Bootnodes:   srv.BootstrapNodes,
 			Unhandled:   unhandled,
 			Log:         srv.log,
+			NetworkID:   srv.NetworkID, // Pass network ID for XDC-specific discovery
 		}
 		ntab, err := discover.ListenV4(conn, srv.localnode, cfg)
 		if err != nil {
@@ -752,7 +754,8 @@ running:
 
 func (srv *Server) postHandshakeChecks(peers map[enode.ID]*Peer, inboundCount int, c *conn) error {
 	switch {
-	case !c.is(trustedConn) && len(peers) >= srv.MaxPeers:
+	// XDC: static dialed connections bypass the MaxPeers check
+	case !c.is(trustedConn|staticDialedConn) && len(peers) >= srv.MaxPeers:
 		return DiscTooManyPeers
 	case !c.is(trustedConn) && c.is(inboundConn) && inboundCount >= srv.MaxInboundConns():
 		return DiscTooManyPeers

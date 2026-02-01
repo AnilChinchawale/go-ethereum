@@ -20,9 +20,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
@@ -83,6 +85,83 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 			}
 		}
 		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
+
+	// XDC pre-merge block announcements and broadcasts
+	case *eth.NewBlockHashesPacket:
+		// Mark the hashes as present at the remote peer
+		hashes := make([]common.Hash, len(*packet))
+		for i, block := range *packet {
+			hashes[i] = block.Hash
+		}
+		// Trigger sync if we're behind
+		go func() {
+			if err := (*handler)(h).downloader.LegacySync(); err != nil {
+				log.Trace("Legacy sync from block hashes failed", "err", err)
+			}
+		}()
+		return nil
+
+	case *eth.NewBlockPacket:
+		// A new block was broadcast - trigger sync to catch up
+		go func() {
+			if err := (*handler)(h).downloader.LegacySync(); err != nil {
+				log.Trace("Legacy sync from new block failed", "err", err)
+			}
+		}()
+		return nil
+
+	// XDPoS2 consensus messages
+	case *types.Vote:
+		log.Trace("Received vote message", "peer", peer.ID()[:16], "hash", packet.Hash().Hex())
+		if h.bftHandler != nil {
+			return h.bftHandler.HandleVote(peer, packet)
+		}
+		return nil
+
+	case *types.Timeout:
+		log.Trace("Received timeout message", "peer", peer.ID()[:16], "hash", packet.Hash().Hex())
+		if h.bftHandler != nil {
+			return h.bftHandler.HandleTimeout(peer, packet)
+		}
+		return nil
+
+	case *types.SyncInfo:
+		log.Trace("Received syncInfo message", "peer", peer.ID()[:16], "hash", packet.Hash().Hex())
+		if h.bftHandler != nil {
+			return h.bftHandler.HandleSyncInfo(peer, packet)
+		}
+		return nil
+
+	case *eth.BlockHeadersRequest:
+		// Legacy block headers response (for XDC compatibility)
+		// BlockHeadersRequest is actually headers data despite the name - it's []*types.Header
+		headers := ([]*types.Header)(*packet)
+		log.Info("XDC: Received legacy block headers", "count", len(headers), "peer", peer.ID()[:16])
+		
+		if len(headers) > 0 {
+			if h.xdcSyncer != nil {
+				// Process headers through xdcSyncer which will fetch bodies and import blocks
+				go h.xdcSyncer.processHeaders(peer, headers)
+			} else {
+				log.Warn("XDC: Received headers but xdcSyncer not available")
+			}
+		}
+		return nil
+
+	case *eth.BlockBodiesResponse:
+		// Legacy block bodies response (for XDC compatibility)
+		bodies := ([]*eth.BlockBody)(*packet)
+		log.Info("XDC: Received legacy block bodies", "count", len(bodies), "peer", peer.ID()[:16])
+		
+		if len(bodies) > 0 {
+			if h.xdcSyncer != nil {
+				// Process bodies through xdcSyncer
+				go h.xdcSyncer.processBodies(peer, bodies)
+			} else {
+				log.Warn("XDC: Received bodies but xdcSyncer not available")
+			}
+		}
+		return nil
 
 	default:
 		return fmt.Errorf("unexpected eth packet type: %T", packet)

@@ -19,13 +19,26 @@ package eth
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 )
+
+// XDCBlockchain extends forkid.Blockchain with methods needed for XDC sync.
+// This allows getting the actual highest block during sync, not just the canonical head.
+type XDCBlockchain interface {
+	forkid.Blockchain
+	// CurrentBlock returns the current head block (may be higher than CurrentHeader during sync)
+	CurrentBlock() *types.Header
+	// GetHeaderByNumber returns a header by block number
+	GetHeaderByNumber(number uint64) *types.Header
+}
 
 const (
 	// handshakeTimeout is the maximum allowed time for the `eth` handshake to
@@ -41,9 +54,76 @@ func (p *Peer) Handshake(networkID uint64, chain forkid.Blockchain, rangeMsg Blo
 		return p.handshake69(networkID, chain, rangeMsg)
 	case ETH68:
 		return p.handshake68(networkID, chain)
+	case ETH62, ETH63, XDPOS2:
+		// XDC uses eth/62, eth/63, and xdpos2 without ForkID
+		return p.handshake62(networkID, chain)
 	default:
 		return errors.New("unsupported protocol version")
 	}
+}
+
+// handshake62 performs the eth/62 handshake without ForkID (used by XDC)
+func (p *Peer) handshake62(networkID uint64, chain forkid.Blockchain) error {
+	var (
+		genesis = chain.Genesis()
+		latest  = chain.CurrentHeader()
+	)
+
+	// XDC fix: During sync, CurrentHeader() may return a stale canonical head.
+	// Try to get the actual current block which includes synced blocks.
+	if xdcChain, ok := chain.(XDCBlockchain); ok {
+		if currentBlock := xdcChain.CurrentBlock(); currentBlock != nil {
+			if currentBlock.Number.Uint64() > latest.Number.Uint64() {
+				log.Debug("XDC handshake: using CurrentBlock instead of CurrentHeader",
+					"currentBlock", currentBlock.Number.Uint64(),
+					"currentHeader", latest.Number.Uint64())
+				latest = currentBlock
+			}
+		}
+	}
+
+	// XDC is pre-merge, so TD is relevant. Use a placeholder TD based on block number.
+	// In a proper implementation, this should come from the chain's state.
+	td := new(big.Int).SetUint64(latest.Number.Uint64())
+	errc := make(chan error, 2)
+	go func() {
+		pkt := &StatusPacket62{
+			ProtocolVersion: uint32(p.version),
+			NetworkID:       networkID,
+			TD:              td,
+			Head:            latest.Hash(),
+			Genesis:         genesis.Hash(),
+		}
+		errc <- p2p.Send(p.rw, StatusMsg, pkt)
+	}()
+	var status StatusPacket62 // safe to read after two values have been received from errc
+	go func() {
+		errc <- p.readStatus62(networkID, &status, genesis.Hash())
+	}()
+
+	if err := waitForHandshake(errc, p); err != nil {
+		return err
+	}
+	// Store peer's head and TD for sync coordination (XDC compatibility)
+	p.SetHead(status.Head, status.TD)
+	return nil
+}
+
+func (p *Peer) readStatus62(networkID uint64, status *StatusPacket62, genesis common.Hash) error {
+	if err := p.readStatusMsg(status); err != nil {
+		return err
+	}
+	if status.NetworkID != networkID {
+		return fmt.Errorf("%w: %d (!= %d)", errNetworkIDMismatch, status.NetworkID, networkID)
+	}
+	if uint(status.ProtocolVersion) != p.version {
+		return fmt.Errorf("%w: %d (!= %d)", errProtocolVersionMismatch, status.ProtocolVersion, p.version)
+	}
+	if status.Genesis != genesis {
+		return fmt.Errorf("%w: %x (!= %x)", errGenesisMismatch, status.Genesis, genesis)
+	}
+	// No ForkID check for eth/62
+	return nil
 }
 
 func (p *Peer) handshake68(networkID uint64, chain forkid.Blockchain) error {
