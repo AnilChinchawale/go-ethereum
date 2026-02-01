@@ -194,23 +194,66 @@ func (c *XDPoS) CreateDefaultHookReward() func(chain consensus.ChainHeaderReader
 		}
 		endBlock := startBlock + rCheckpoint - 1
 
-		log.Debug("HookReward scanning blocks", "number", number, "startBlock", startBlock, "endBlock", endBlock)
+				log.Info("Calculate reward at checkpoint", "startBlock", startBlock, "endBlock", endBlock, "signers", len(masternodes))
 
-		// Scan blocks to count actual block creators
-		for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
-			blockHeader := chain.GetHeaderByNumber(blockNum)
-			if blockHeader != nil {
-				signer, err := c.RecoverSigner(blockHeader)
-				if err != nil {
-				if blockNum < 10 || blockNum%100 == 0 {
-					log.Debug("RecoverSigner failed", "block", blockNum, "err", err)
+		// Try to cast to ChainReader to get full blocks
+		fullChain, hasGetBlock := chain.(interface {
+			GetBlock(hash common.Hash, number uint64) *types.Block
+		})
+		
+		if hasGetBlock {
+			log.Info("Using GetBlock path for signing tx counting")
+			// Scan blocks and count signing transactions (like XDC v2.6.8)
+			txCount := 0
+			for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
+				header := chain.GetHeaderByNumber(blockNum)
+				if header == nil {
+					continue
 				}
-			} else {
-					signCount[signer]++
+				block := fullChain.GetBlock(header.Hash(), blockNum)
+				if block == nil {
+					log.Debug("GetBlock returned nil", "number", blockNum)
+					continue
+				}
+				txCount += len(block.Transactions())
+				
+				// Count signing transactions to BlockSigners contract (0x89)
+				for _, tx := range block.Transactions() {
+					if tx.To() != nil && *tx.To() == common.BlockSignersBinary {
+						// Get signer from tx.From()
+						from, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+						if err != nil {
+							continue
+						}
+						// Check if signer is a masternode
+						for _, mn := range masternodes {
+							if from == mn {
+								signCount[from]++
+								break
+							}
+						}
+					}
+				}
+			}
+			var totalSigns int64
+			for _, c := range signCount {
+				totalSigns += c
+			}
+			log.Info("Counted signing transactions", "totalSigners", len(signCount), "totalSigns", totalSigns, "txsScanned", txCount)
+		} else {
+			log.Warn("Chain does not support GetBlock, using header signers as fallback")
+			for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
+				blockHeader := chain.GetHeaderByNumber(blockNum)
+				if blockHeader != nil {
+					signer, err := c.RecoverSigner(blockHeader)
+					if err == nil {
+						signCount[signer]++
+					}
 				}
 			}
 		}
 
+		
 		return CalculateRewards(chain, state, header, rewardConfig, masternodes, signCount)
 	}
 }

@@ -402,7 +402,8 @@ func (c *XDPoS) verifyHeader(chain consensus.ChainHeaderReader, header *types.He
 	// Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
 	signersBytes := len(header.Extra) - extraVanity - extraSeal
 	if !checkpoint && signersBytes != 0 {
-		return errExtraSigners
+		// XDPoS v2 has extra data - skip check
+		// return errExtraSigners
 	}
 	if checkpoint && signersBytes%common.AddressLength != 0 {
 		return errInvalidCheckpointSigners

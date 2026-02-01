@@ -164,15 +164,23 @@ func GetSigningTxCount(c *XDPoS.XDPoS, chain *core.BlockChain, header *types.Hea
 		if i%common.MergeSignRange == 0 {
 			addrs := data[mapBlkHash[i]]
 			if len(addrs) > 0 {
+				// Deduplicate signers per block (like v2.6.8)
+				addrSigners := make(map[common.Address]bool)
 				for _, addr := range addrs {
 					if masternodeMap[addr] {
-						if _, exist := signers[addr]; exist {
-							signers[addr].Sign++
-						} else {
-							signers[addr] = &contracts.RewardLog{Sign: 1, Reward: new(big.Int)}
+						if _, ok := addrSigners[addr]; !ok {
+							addrSigners[addr] = true
 						}
-						*totalSigner++
 					}
+				}
+				// Now count each unique signer once per block
+				for addr := range addrSigners {
+					if _, exist := signers[addr]; exist {
+						signers[addr].Sign++
+					} else {
+						signers[addr] = &contracts.RewardLog{Sign: 1, Reward: new(big.Int)}
+					}
+					*totalSigner++
 				}
 			}
 		}
