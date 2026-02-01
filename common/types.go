@@ -68,8 +68,8 @@ const (
 	HexSetOpening   = "e11f5ba2"
 
 	// Reward percentages
-	RewardMasterPercent     = 40
-	RewardVoterPercent      = 50
+	RewardMasterPercent     = 90
+	RewardVoterPercent      = 0
 	RewardFoundationPercent = 10
 
 	// Epoch block constants
